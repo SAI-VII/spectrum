@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>靈體圖鑑 · 本體光譜</title>
+<meta name="description" content="由法則到物質的一條光譜:237 位靈體、七環、六軸,附 3D 星宇、立體肖像、本命靈測驗與今日靈籤。">
+<meta name="theme-color" content="#0E1015">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=Noto+Serif+TC:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="src/styles.css">
+<script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+}}
+</script>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero">
+    <div class="eyebrow">靈體圖鑑 · An Ontological Spectrum</div>
+    <div class="spine" id="spine" aria-label="法 權 力 信 念 懼 物">
+      <b class="seal-law" data-band="law" title="法則">法</b><i>→</i><b class="seal-sov" data-band="sovereign" title="主權諸神">權</b><i>→</i><b class="seal-edge" data-band="edge" title="邊界之力">力</b><i>→</i><b class="seal-folk" data-band="folk" title="人間之神">信</b><i>→</i><b class="seal-kin" data-band="kin" title="念故者">念</b><i>→</i><b class="seal-thr" data-band="threshold" title="門檻之靈">懼</b><i>→</i><b class="seal-mat" data-band="matter" title="退潮">物</b>
+    </div>
+    <p class="thesis">由「法則」到「物質」的一條光譜。權力最大的那個認不得你,權力最小的那個專程來找你——<em>意義,住在中間被相信、被記得的那段暖帶。</em></p>
+    <div class="hero-tools">
+      <button class="tool primary" id="t-cosmos" type="button">進入星宇 <span class="tk">3D</span></button>
+      <button class="tool" id="t-omen" type="button">抽今日靈籤 <span class="tk">Omen</span></button>
+      <button class="tool" id="t-quiz" type="button">測你的本命靈 <span class="tk">Quiz</span></button>
+    </div>
+  </header>
+</div>
+
+<div class="controls" id="controls">
+  <div class="wrap">
+    <div class="controls-in">
+      <div class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m21 21-4.3-4.3"></path></svg>
+        <input id="q" type="search" placeholder="尋一個名字…  天后、Ananke、祖先靈" aria-label="搜尋靈體">
+      </div>
+      <div class="viewsw" role="group" aria-label="檢視">
+        <button type="button" data-view="codex" aria-pressed="true">圖鑑</button>
+        <button type="button" data-view="cosmos" aria-pressed="false">星宇 3D</button>
+      </div>
+      <div class="ctl-group" id="regions">
+        <span class="ctl-label">系統</span>
+        <button class="chip reg" data-reg="all" aria-pressed="true">全部</button>
+        <button class="chip reg" data-reg="希臘" aria-pressed="false">希臘</button>
+        <button class="chip reg" data-reg="香港" aria-pressed="false">香港</button>
+        <button class="chip reg" data-reg="其他" aria-pressed="false">其他</button>
+        <button class="chip fav" id="favOnly" aria-pressed="false">★ 收藏</button>
+        <button class="chip snd" id="sound" aria-pressed="false" title="每一環有自己的和弦">聲景</button>
+      </div>
+      <div class="ctl-group" id="lenses">
+        <span class="ctl-label">光照</span>
+        <button class="chip lens" data-lens="band" aria-pressed="true">依環</button>
+        <button class="chip lens" data-lens="power" aria-pressed="false">本體權能</button>
+        <button class="chip lens" data-lens="scope" aria-pressed="false">影響半徑</button>
+        <button class="chip lens" data-lens="valence" aria-pressed="false">向人性</button>
+        <button class="chip lens" data-lens="nego" aria-pressed="false">可協商度</button>
+        <button class="chip lens" data-lens="vivid" aria-pressed="false">信仰熱度</button>
+        <button class="chip lens" data-lens="liminal" aria-pressed="false">臨界性</button>
+      </div>
+      <div class="lens-hint" id="hint"></div>
+    </div>
+  </div>
+</div>
+
+<div class="wrap" id="codex">
+  <main id="spectrum" aria-label="靈體光譜"></main>
+</div>
+
+<section id="cosmos" aria-label="星宇 3D:七環光譜塔" hidden>
+  <div class="cz-top">
+    <div class="viewsw" role="group" aria-label="3D 佈局">
+      <button type="button" data-layout="tower" aria-pressed="true">光譜塔</button>
+      <button type="button" data-layout="axes" aria-pressed="false">軸空間</button>
+    </div>
+    <div class="cz-axes" id="cz-axes" hidden>
+      <label>X <select id="ax-x"></select></label>
+      <label>Y <select id="ax-y"></select></label>
+      <label>Z <select id="ax-z"></select></label>
+      <span class="cz-r" id="cz-r"></span>
+    </div>
+  </div>
+  <div class="cz-bands" id="cz-bands"></div>
+  <p class="cz-note" id="cz-note"></p>
+  <div class="cz-label" id="cz-label" hidden></div>
+  <div class="cz-status" id="cz-status">星宇載入中⋯⋯</div>
+</section>
+
+<div class="wrap" id="foot">
+  <footer>
+    <div class="progress" id="progress" aria-label="收集進度"></div>
+    <div class="legend" id="legend"></div>
+    <p class="colophon" id="colophon"></p>
+  </footer>
+</div>
+
+<div id="scrim"></div>
+<aside id="drawer" aria-label="靈體詳情" aria-hidden="true" tabindex="-1">
+  <div class="dr-pad" id="dr-body"></div>
+</aside>
+
+<div id="modal" role="dialog" aria-modal="true" aria-labelledby="md-title" hidden>
+  <div class="md" id="md"></div>
+</div>
+<div id="tray" hidden></div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script src="assets/manifest.js"></script>
+<script src="src/data/entities.js"></script>
+<script src="src/data/lore.js"></script>
+<script src="src/prompts.js"></script>
+<script src="src/core.js"></script>
+<script src="src/features.js"></script>
+<script src="src/stage3d.js"></script>
+<script src="src/cosmos3d.js"></script>
+<script src="src/main.js"></script>
+</body>
+</html>
