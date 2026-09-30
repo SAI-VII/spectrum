@@ -1,21 +1,24 @@
 /* 星宇 3D:把整部圖鑑放進一座可旋轉的光譜塔
    · 光譜塔:七環由上(法)而下(物)疊起;每環半徑 = 該環平均「影響半徑」,所以塔身在「念」收得最窄——
      離中軸最近的,是被記得的人。晶體＝六軸側影擠出,大小＝本體權能,顏色與亮度隨「光照」而變。
-   · 軸空間:任選三軸作 X/Y/Z,每位靈體落在對應座標;X↔Y 顯示相關係數,可以直接檢驗「權能與親密成反比」。 */
+   · 軸空間:任選三軸作 X/Y/Z,每位靈體落在對應座標;X↔Y 顯示相關係數,可以直接檢驗「權能與親密成反比」。
+   · 已 3D 化的靈體(assets/models.js 內有 lod 模型)會按離鏡頭遠近逐個載入,把晶體換成雕像。
+   · 最後一道「調色」後期:暗角、細微色散與菲林顆粒,令畫面像一格電影而不是一個網頁。 */
 
 const Cosmos=(()=>{
   let T, renderer, scene, camera, controls, composer, clock, host, canvas, ro;
   let raf=0, ready=false, loading=null, failed=false, active=false;
   let layout="tower", mix=0, axes=[0,2,5], fly=null, lastInteract=0, hovered=null, pointerNdc=null, downAt=null, focusAfter=null;
   const nodes=[], towerFx=[], axisFx=[], axisLabels=[], geoCache=new Map();
-  let embers=null, stars=null, glowTex=null;
+  let embers=null, stars=null, glowTex=null, grade=null, streamAt=0, modelBusy=0, modelLoaded=0;
+  const MODEL_CAP=matchMedia("(max-width:720px)").matches||(navigator.deviceMemory||8)<4?80:260;
   const reduced=matchMedia("(prefers-reduced-motion: reduce)").matches;
   const BAND_Y={}, BAND_R={};
   BANDS.forEach((b,i)=>{
     BAND_Y[b.key]=66-i*22;
     const L=BAND_LISTS[b.key]; BAND_R[b.key]=6+L.reduce((s,e)=>s+e.radar[1],0)/L.length*.42;
   });
-  const TOWER_CAM=[0,40,218], AXES_CAM=[150,78,170];
+  const TOWER_CAM=[0,34,196], AXES_CAM=[150,78,170];
   /* 直幅螢幕把鏡頭拉遠,令整座塔放得入畫面 */
   const camAt=p=>new T.Vector3(...p).multiplyScalar(Math.max(1,.85/Math.max(camera.aspect,.3)));
 
@@ -172,13 +175,15 @@ const Cosmos=(()=>{
   }
 
   async function init(){
-    const [three,{OrbitControls},{EffectComposer},{RenderPass},{UnrealBloomPass},{OutputPass}]=await Promise.all([
+    const [three,{OrbitControls},{EffectComposer},{RenderPass},{UnrealBloomPass},{OutputPass},{ShaderPass},{RoomEnvironment}]=await Promise.all([
       loadThree(),
       import("three/addons/controls/OrbitControls.js"),
       import("three/addons/postprocessing/EffectComposer.js"),
       import("three/addons/postprocessing/RenderPass.js"),
       import("three/addons/postprocessing/UnrealBloomPass.js"),
-      import("three/addons/postprocessing/OutputPass.js")]);
+      import("three/addons/postprocessing/OutputPass.js"),
+      import("three/addons/postprocessing/ShaderPass.js"),
+      import("three/addons/environments/RoomEnvironment.js")]);
     T=three;
     try{ await document.fonts?.ready; }catch{}
     renderer=new T.WebGLRenderer({antialias:false,powerPreference:"high-performance"});
@@ -199,6 +204,9 @@ const Cosmos=(()=>{
     controls.target.set(0,BAND_Y.law,0);
     controls.addEventListener("start",()=>{ lastInteract=performance.now(); fly=null; });
     scene.add(new T.AmbientLight(0xffffff,.3),new T.HemisphereLight(0xAEBAC9,0x14161C,.6));
+    /* 雕像的 PBR 材質需要環境光才有質感 */
+    const pm=new T.PMREMGenerator(renderer); scene.environment=pm.fromScene(new RoomEnvironment(),.04).texture; pm.dispose();
+    scene.environmentIntensity=.45;
     const key=new T.DirectionalLight(0xffffff,1.1); key.position.set(60,120,80); scene.add(key);
     glowTex=new T.CanvasTexture(glowCanvas());
     buildStars(); buildTower(); buildAxisFrame(); buildEmbers(); buildNodes();
@@ -209,6 +217,21 @@ const Cosmos=(()=>{
     composer.addPass(new RenderPass(scene,camera));
     composer.addPass(new UnrealBloomPass(new T.Vector2(2,2),.6,.42,.42));
     composer.addPass(new OutputPass());
+    grade=new ShaderPass({
+      uniforms:{tDiffuse:{value:null},time:{value:0},res:{value:new T.Vector2(1,1)}},
+      vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+      fragmentShader:`uniform sampler2D tDiffuse;uniform float time;uniform vec2 res;varying vec2 vUv;
+        float h(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}
+        void main(){
+          vec2 d=vUv-.5; float r=dot(d,d);
+          vec2 off=d*r*.006;
+          vec3 c=vec3(texture2D(tDiffuse,vUv+off).r,texture2D(tDiffuse,vUv).g,texture2D(tDiffuse,vUv-off).b);
+          c*=mix(1.,smoothstep(.9,.12,r*1.7),.45);
+          c+=(h(floor(vUv*res)+fract(time)*97.)-.5)*.032;
+          gl_FragColor=vec4(c,1.);
+        }`
+    });
+    composer.addPass(grade);
     clock=new T.Clock();
 
     canvas.addEventListener("pointermove",ev=>{ const r=canvas.getBoundingClientRect(); pointerNdc=[((ev.clientX-r.left)/r.width)*2-1,-((ev.clientY-r.top)/r.height)*2+1,ev.clientX-r.left,ev.clientY-r.top]; });
@@ -233,7 +256,7 @@ const Cosmos=(()=>{
   const ray=()=>ray.r||(ray.r=new T.Raycaster());
   function pick(ndc){
     const rc=ray(); rc.setFromCamera(new T.Vector2(ndc[0],ndc[1]),camera);
-    const hit=rc.intersectObjects(nodes.filter(n=>n.vis).map(n=>n.mesh),false)[0];
+    const hit=rc.intersectObjects(nodes.filter(n=>n.vis).map(n=>n.model||n.mesh),true)[0];
     return hit?hit.object.userData.node:null;
   }
   function setHover(n){
@@ -250,6 +273,7 @@ const Cosmos=(()=>{
     if(!ready||!host) return;
     const w=host.clientWidth, h=host.clientHeight; if(!w||!h) return;
     renderer.setSize(w,h,false); composer.setSize(w,h);
+    grade.uniforms.res.value.set(w,h);
     camera.aspect=w/h; camera.updateProjectionMatrix();
   }
 
@@ -273,9 +297,11 @@ const Cosmos=(()=>{
       n.pivot.position.copy(n.cur);
       if(mix>.5) n.pivot.quaternion.copy(q);
       else{ tmp.set(n.cur.x*2,n.cur.y,n.cur.z*2); n.pivot.lookAt(tmp); }
-      n.mesh.rotation.y=reduced?0:Math.sin(t*.5+n.phase)*.4;
+      const wob=reduced?0:Math.sin(t*.5+n.phase)*.4;
+      n.mesh.rotation.y=wob;
       n.hover+=((n===hovered||n.e.rank===state.current?1:0)-n.hover)*ease*2;
       const s=n.size*(1+.4*n.hover); n.mesh.scale.setScalar(s); n.glow.scale.setScalar(s*2.2);
+      if(n.model){ n.model.rotation.y=wob; n.model.scale.setScalar(1+.35*n.hover); }
     });
 
     if(embers&&!reduced&&mix<.99){
@@ -284,6 +310,8 @@ const Cosmos=(()=>{
       embers.geometry.attributes.position.needsUpdate=true;
     }
     if(stars&&!reduced) stars.rotation.y+=dt*.004;
+    if(!reduced) grade.uniforms.time.value=t;
+    if(t-streamAt>.4){ streamAt=t; streamModels(); }
 
     if(pointerNdc&&!downAt) setHover(pick(pointerNdc));
     if(hovered){
@@ -306,25 +334,58 @@ const Cosmos=(()=>{
     const r=correlation();
     $("#cz-r").textContent=r==null?"":`${AXES[axes[0]].label} ↔ ${AXES[axes[1]].label}  r = ${r.toFixed(2)}`;
     $("#cz-note").innerHTML=layout==="tower"
-      ?"塔身寬窄＝各環平均「影響半徑」。腰身最窄處是「念」:離中軸最近的,是被記得的人。<br>晶體＝六軸側影,大小＝本體權能。拖曳旋轉,滾輪縮放,點選晶體打開圖鑑。"
+      ?`塔身寬窄＝各環平均「影響半徑」。腰身最窄處是「念」:離中軸最近的,是被記得的人。<br>晶體＝六軸側影,大小＝本體權能${Models.count()?`;已 3D 化的 ${Models.count()} 位以雕像顯示`:""}。拖曳旋轉,滾輪縮放,點選打開圖鑑。`
       :`每粒晶體按所選三軸定位。r 為 X 與 Y 的相關係數:負數＝此消彼長,接近 0＝互不相干。${r!=null&&r<-.2?"這裡看得見反比。":"想找「權能與親密成反比」?試把 X 設為本體權能,Y 設為向人性或臨界性。"}`;
   }
 
+  /* 一粒晶體或一座雕像的「光照」:篩走的變暗變透明;非「依環」光照時,按該軸數值發光 */
+  function paintNode(n,li){
+    const e=n.e, vis=visible(e), col=new T.Color(entColor(e));
+    const k=li<0?1:.25+e.radar[li]/100*1.25;
+    n.vis=vis;
+    n.mesh.material.color.copy(col); n.mesh.material.emissive.copy(col);
+    n.mesh.material.emissiveIntensity=vis?.16+.34*k:0;
+    n.mesh.material.opacity=vis?.95:.06;
+    n.glow.material.color.copy(col);
+    n.glow.material.opacity=vis?(e.flagship?.3:.17)*k*(n.model?.55:1):0;
+    (n.mats||[]).forEach(m=>{
+      if(m.transparent!==!vis){ m.transparent=!vis; m.needsUpdate=true; }
+      m.opacity=vis?1:.07; m.depthWrite=vis;
+      if(m.emissive){ m.emissive.copy(col); m.emissiveIntensity=li<0?0:.03+.2*k; }
+    });
+  }
   function paint(){
     if(!ready) return;
     const li=lensIndex();
-    nodes.forEach(n=>{
-      const e=n.e, vis=visible(e), col=new T.Color(entColor(e));
-      const k=li<0?1:.25+e.radar[li]/100*1.25;
-      n.vis=vis;
-      n.mesh.material.color.copy(col); n.mesh.material.emissive.copy(col);
-      n.mesh.material.emissiveIntensity=vis?.16+.34*k:0;
-      n.mesh.material.opacity=vis?.95:.06;
-      n.glow.material.color.copy(col);
-      n.glow.material.opacity=vis?(e.flagship?.3:.17)*k:0;
-    });
+    nodes.forEach(n=>paintNode(n,li));
     if(hovered&&!hovered.vis) setHover(null);
     note();
+  }
+
+  /* 按離鏡頭遠近逐個載入雕像(每次最多 3 個並行),手機上限 80 座 */
+  function streamModels(){
+    if(modelBusy>=3||modelLoaded>=MODEL_CAP) return;
+    const cand=nodes.filter(n=>!n.model&&!n.loading&&!n.failed&&Models.lod(n.e.rank));
+    if(!cand.length) return;
+    const cp=camera.position;
+    cand.sort((a,b)=>a.pivot.position.distanceToSquared(cp)-b.pivot.position.distanceToSquared(cp));
+    cand.slice(0,3-modelBusy).forEach(loadModel);
+  }
+  async function loadModel(n){
+    n.loading=true; modelBusy++;
+    try{
+      const gltf=await loadGLTF(Models.lod(n.e.rank)), root=gltf.scene;
+      const box=new T.Box3().setFromObject(root), size=box.getSize(new T.Vector3()), c=box.getCenter(new T.Vector3());
+      const h=n.size*1.55, s=Math.min(h/Math.max(size.y,1e-6),n.size*1.7/Math.max(size.x,size.z,1e-6));
+      root.scale.setScalar(s); root.position.set(-c.x*s,-box.min.y*s-size.y*s*.5,-c.z*s);
+      const holder=new T.Group(); holder.add(root);
+      n.mats=[];
+      root.traverse(o=>{ if(o.isMesh){ o.material=o.material.clone(); n.mats.push(o.material); o.userData.node=n; } });
+      n.model=holder; n.pivot.add(holder); n.mesh.visible=false;
+      paintNode(n,lensIndex());
+      modelLoaded++;
+    }catch(err){ n.failed=true; console.warn(`#${n.e.rank} 模型載入失敗`,err); }
+    finally{ n.loading=false; modelBusy--; }
   }
 
   function flyToBand(key){

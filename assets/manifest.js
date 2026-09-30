@@ -9,6 +9,12 @@
    例:
    121: { img: "assets/portraits/121.webp", depth: "assets/depth/121.png", model: "assets/models/121.glb" },
 
+   thumb 圖鑑縮圖(可省略;Meshy 流程會自動渲染,見 assets/models.js)
+
+   另可加各環主視覺(3:1 橫幅),圖鑑每一環的頁首會顯示:
+   bands: { folk: "assets/bands/folk.webp", kin: "assets/bands/kin.webp" },
+
+   Meshy 流程產生的模型登記在 assets/models.js(自動產生);這裏的設定優先。
    不想改檔案的話,也可以在抽屜的立體台直接拖放圖像,圖像只存在你這部裝置的瀏覽器內。 */
 window.SPECTRUM_ASSETS = {
 };

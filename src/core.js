@@ -40,6 +40,8 @@ function glyphSVG(vals){
   return `<polygon class="gframe" points="${frame}"/><polygon class="gsig" points="${sig}"/>`;
 }
 const glyph=(e,sz,col)=>`<svg class="glyph" width="${sz}" height="${sz}" viewBox="0 0 64 64" aria-hidden="true" style="color:${col||bandColor(e)}">${glyphSVG(e.radar)}</svg>`;
+/* 有 3D 縮圖時用縮圖(雕像),否則用六軸印記 */
+const icon=(e,sz,col)=>{ const t=Models.thumb(e.rank); return t?`<img class="thumb" src="${t}" width="${sz}" height="${sz}" alt="" loading="lazy" decoding="async">`:glyph(e,sz,col); };
 
 function build(){
   const main=$("#spectrum");
@@ -49,6 +51,8 @@ function build(){
     sec.className="band"+(band.warm?" band-warm":"");
     sec.id="band-"+band.key;
     if(band.warm)sec.style.setProperty("--warm-wash",band.warm);
+    const art=((window.SPECTRUM_ASSETS||{}).bands||{})[band.key];
+    if(art){ sec.classList.add("has-art"); sec.style.setProperty("--band-art",`url("${art}")`); }
     sec.style.transitionDelay=(bi*65)+"ms";
     sec.innerHTML=
       `<div class="seal-bg ${band.cls}">${band.seal}</div>`+
@@ -58,12 +62,13 @@ function build(){
       `<p class="band-essence">${band.essence}</p><div class="plate"></div>`;
     const plate=sec.querySelector(".plate");
     list.forEach(e=>{
-      const sz=Math.round(30+(e.radar[0]/100)*24);
+      const sz=Math.round(30+(e.radar[0]/100)*24), th=Models.thumb(e.rank);
       const cell=document.createElement("button");
-      cell.className="cell"+(e.flagship?" flag":"");
+      cell.className="cell"+(e.flagship?" flag":"")+(th?" has-thumb":"");
       cell.dataset.rank=e.rank;
       cell.setAttribute("aria-label",e.cn+(e.en?" "+e.en:""));
-      cell.innerHTML=`<svg class="glyph" width="${sz}" height="${sz}" viewBox="0 0 64 64" aria-hidden="true">${glyphSVG(e.radar)}</svg>`+
+      const sig=`<svg class="glyph" width="${th?18:sz}" height="${th?18:sz}" viewBox="0 0 64 64" aria-hidden="true">${glyphSVG(e.radar)}</svg>`;
+      cell.innerHTML=(th?`<span class="tw"><img class="thumb" src="${th}" width="${sz+22}" height="${sz+22}" alt="" loading="lazy" decoding="async">${sig}</span>`:sig)+
         `<span class="cap">${e.cn}${e.en?`<span class="en">${e.en}</span>`:""}</span><span class="mk" aria-hidden="true"></span>`;
       cell.addEventListener("click",()=>openDetail(e.rank));
       plate.appendChild(cell);
@@ -73,7 +78,7 @@ function build(){
   });
   paint();
   $("#legend").innerHTML=BANDS.map(b=>`<span><i style="background:${cvar(b.color)}"></i>${b.seal} ${b.cn} · ${b.en}</span>`).join("");
-  $("#colophon").innerHTML=`共 <b>${ENTITIES.length}</b> 位靈體,分作七環;其中 <b>${ENTITIES.filter(e=>e.flagship).length}</b> 位已立傳——以該環應有的語域精寫,並附豐富化的影響/職權與能力/手段,名字亮色顯示。每一位點開,都有<b>六軸逐條解讀</b>(數值＋一句詮釋＋量條)、一座<b>立體台</b>(六軸晶體,或你放入的肖像經深度圖立體化)、<b>相似靈體</b>與<b>ChatGPT 圖像指令</b>;在 Claude 內開啟時,更可按 <b>「深掘立傳」</b>或<b>「向祂問一句」</b>,由 AI 以對應語域續寫。每枚印記:形狀＝六軸側影,大小＝本體權能,顏色隨「光照」而變;左上小點＝已遇見,★＝已收藏,「像」＝已立像。`;
+  $("#colophon").innerHTML=`共 <b>${ENTITIES.length}</b> 位靈體,分作七環;其中 <b>${ENTITIES.filter(e=>e.flagship).length}</b> 位已立傳——以該環應有的語域精寫,並附豐富化的影響/職權與能力/手段,名字亮色顯示。每一位點開,都有<b>六軸逐條解讀</b>(數值＋一句詮釋＋量條)、一座<b>立體台</b>(3D 雕像;未 3D 化的顯示六軸晶體,或你放入的肖像經深度圖立體化)、<b>相似靈體</b>與<b>圖像與 3D 指令</b>(ChatGPT 與 Meshy);在 Claude 內開啟時,更可按 <b>「深掘立傳」</b>或<b>「向祂問一句」</b>,由 AI 以對應語域續寫。每枚印記:形狀＝六軸側影,大小＝本體權能,顏色隨「光照」而變;左上小點＝已遇見,★＝已收藏,「像」＝已立像;已 3D 化的靈體以雕像縮圖代替印記,印記縮在右下角。`;
   requestAnimationFrame(()=>$$(".band").forEach(s=>s.classList.add("in")));
 }
 
@@ -99,6 +104,7 @@ function paint(){
   $$(".cell").forEach(c=>{
     const e=byRank(c.dataset.rank);
     c.style.color=entColor(e);
+    c.style.setProperty("--lk",state.lens==="band"?1:(.25+e.radar[lensIndex()]/100*.95).toFixed(2));
     c.classList.toggle("dim",!visible(e));
     c.classList.toggle("seen",Collection.isSeen(e.rank));
     const mk=c.querySelector(".mk"), fav=Collection.isFav(e.rank), img=Portraits.has(e.rank);
@@ -159,7 +165,7 @@ function openDetail(rank){
   const untold=e.flagship?"":`<span class="untold">待立傳</span>`;
   const facts=[["對人的影響／職權",e.influence],["能力與手段",e.means]]
     .filter(f=>f[1]&&f[1]!=="—").map(f=>`<div><b>${f[0]}</b><br>${f[1]}</div>`).join("");
-  const sims=similar(e).map(([x,d])=>`<button class="sim-item" data-rank="${x.rank}">${glyph(x,30)}<span><span class="n">${x.cn}</span><span class="p">${bandOf(x).seal} · 相近 ${likeness(d)}%</span></span></button>`).join("");
+  const sims=similar(e).map(([x,d])=>`<button class="sim-item" data-rank="${x.rank}">${icon(x,30)}<span><span class="n">${x.cn}</span><span class="p">${bandOf(x).seal} · 相近 ${likeness(d)}%</span></span></button>`).join("");
   const [prev,next]=neighbours(e);
 
   $("#dr-body").innerHTML=
@@ -173,13 +179,15 @@ function openDetail(rank){
         `<label class="sbtn">放入肖像<input type="file" accept="image/*" id="pf-img"></label>`+
         `<label class="sbtn">深度圖<input type="file" accept="image/*" id="pf-depth"></label>`+
         `<label class="sbtn">GLB 模型<input type="file" accept=".glb,model/gltf-binary" id="pf-model"></label>`+
+        `<button class="sbtn" id="pf-swap" type="button" hidden>看肖像</button>`+
+        `<button class="sbtn" id="pf-full" type="button">全螢幕</button>`+
         `<button class="sbtn" id="pf-clear" type="button" hidden>移除</button></div>`+
       `<div class="stage-drop">放開,即把圖像立體化</div>`+
     `</div>`+
     `<div class="acts">`+
       `<button class="act" id="a-fav" aria-pressed="${Collection.isFav(e.rank)}">${Collection.isFav(e.rank)?"★ 已收藏":"☆ 收藏"}</button>`+
       `<button class="act" id="a-cmp" aria-pressed="${Compare.has(e.rank)}">${Compare.has(e.rank)?"已加入比較":"加入比較"}</button>`+
-      `<button class="act" id="a-prompt" aria-pressed="false">ChatGPT 圖像指令</button>`+
+      `<button class="act" id="a-prompt" aria-pressed="false">圖像與 3D 指令</button>`+
       `<button class="act" id="a-share">分享卡</button>`+
     `</div><div id="pp-slot"></div>`+
     `<div class="radar-wrap">${radarSVG(e.radar,col)}</div>`+

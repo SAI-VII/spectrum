@@ -56,39 +56,83 @@ const HINTS={
 /* 3D 光譜塔:每環的高度(由上而下 = 由法則到物質)。環的半徑由該環平均「影響半徑」計出,見 cosmos3d.js。 */
 const BAND_ORDER=BANDS.map(b=>b.key);
 
-/* 每環的圖像美術方向:供 ChatGPT 圖像 prompt 使用(英文,生成模型最穩定)。 */
+/* 每環的美術方向:供 ChatGPT 圖像與 Meshy 3D 指令使用(英文,生成模型最穩定)。
+   env 插圖場景 · light 燈光配方 · palette 色彩 · statue 雕像預設材質 · plinth 底座 · avoid 該環要避免的東西 */
 const BAND_ART={
   law:{hex:"#AEBAC9",mood:"cold, silent, immense",
-    scene:"The entity is a principle, not a person: vast concentric orbits, thread-thin lines of light, an engraved celestial chart rendered in light. Any figure is veiled, faceless or made of geometry.",
-    palette:"silver-blue light on ink black, faint bone-white engraving lines"},
+    env:"deep space drawn as an engraved celestial chart: concentric orbits, hair-thin lines of light, star fields, nothing human except perhaps one tiny silhouette for scale",
+    light:"no warm light at all; a single cold silver-blue rim light from behind, faint starlight fill, deep blacks",
+    palette:"silver-blue #AEBAC9 on ink black #0E1015, bone-white #ECE6D9 hairlines",
+    statue:"pale silver-blue stone with engraved silver lines, like a museum astronomical instrument",
+    plinth:"a low hexagonal plinth of black stone engraved with a star chart",
+    avoid:"faces with human warmth, cute features, bright saturated colour"},
   sovereign:{hex:"#9B86D9",mood:"majestic, ceremonial, divine",
-    scene:"A classical Greek divinity as a luminous fresco-statue: marble skin, gold-leaf details, attributes of office held with calm authority, Hellenistic sculpture lighting with ink-wash edges.",
-    palette:"violet aura, warm marble, restrained gold leaf"},
+    env:"a Greek sanctuary at dusk: marble colonnade, Aegean sky, votive offerings far below the god",
+    light:"soft violet ambient light, a warm gold key light from high above like sunlight through a temple roof, crisp rim light",
+    palette:"violet #9B86D9 aura, warm white marble, restrained gold leaf",
+    statue:"white Parian marble with restrained gold-leaf details, museum sculpture",
+    plinth:"a low hexagonal marble plinth with a Greek key border",
+    avoid:"modern clothing, fantasy-game armour, anime faces"},
   edge:{hex:"#D5664A",mood:"kinetic, dangerous, fated",
-    scene:"A mythic battle plate: the monster or hero caught at the decisive moment, dramatic chiaroscuro, smoke and sparks, faint Greek black-figure pottery motifs in the background.",
-    palette:"vermilion rim light, charcoal shadows, ember sparks"},
+    env:"the edge of the known world: a battlefield, a cliff above a stormy sea, or a labyrinth, with Greek black-figure pottery motifs faint in the smoke",
+    light:"hard vermilion rim light, low charcoal fill, ember sparks as practical light, strong chiaroscuro",
+    palette:"vermilion #D5664A, charcoal black, ember orange, bronze",
+    statue:"dark patinated bronze with vermilion enamel accents",
+    plinth:"a low hexagonal plinth of cracked black basalt with a bronze rim",
+    avoid:"gore, splatter, comic-book style"},
   folk:{hex:"#F2BD5C",mood:"warm, protective, lived-in",
-    scene:"Hong Kong temple devotion: coiled incense spirals hanging from the ceiling, lantern glow, joss paper, carved roof ridges, a neighbourhood shrine at dusk. Painted like a modern gongbi scroll with photographic warmth.",
-    palette:"amber and red-gold lantern light, soft incense haze"},
+    env:"a Hong Kong temple interior at dusk: giant spiral incense coils hanging from dark beams, red lanterns, joss paper, carved roof ridges with ceramic figurines, worshippers' offerings",
+    light:"warm amber practical light from lanterns and candles, incense haze catching the light, soft gold bounce",
+    palette:"amber #F2BD5C, temple red, gold leaf, soot-dark wood",
+    statue:"carved camphor wood temple statue painted in red lacquer and gold leaf, softly darkened by incense smoke",
+    plinth:"a low hexagonal red-lacquer altar plinth with gold trim",
+    avoid:"Japanese or Western styling, generic fantasy costume"},
   kin:{hex:"#D58C6E",mood:"tender, quiet, remembered",
-    scene:"A family ancestral altar at home: one small oil lamp, framed old photographs, a bowl of fruit, tea cups, a presence felt rather than seen. Remembered, not worshipped.",
-    palette:"clay-tangerine lamplight, film grain, deep brown shadows"},
+    env:"a small Hong Kong home at night: the family altar, framed black-and-white photographs, a tea set, a window with city lights",
+    light:"one small oil lamp as the key light, warm clay-orange glow, deep brown shadows, gentle film grain",
+    palette:"clay-tangerine #D58C6E, sandalwood brown, faded photograph tones",
+    statue:"warm carved sandalwood with a soft hand-rubbed finish",
+    plinth:"a low hexagonal wooden altar base with a brass trim",
+    avoid:"horror, ghoulish faces, divine glory"},
   threshold:{hex:"#6FB0A4",mood:"liminal, eerie, second-person dread",
-    scene:"An urban legend at the threshold: night street or shoreline, wet asphalt, sodium streetlamps, fog, the figure half-seen at the edge of the frame or reflected where it should not be.",
-    palette:"cold teal light, sodium orange accents, deep fog"},
+    env:"a threshold at night: an empty corridor, a flooded pier, a crossroads under a sodium lamp, a bedroom doorway, a foggy moor",
+    light:"cold teal moonlight, one sodium-orange practical lamp, heavy fog, the figure lit only at its edges",
+    palette:"teal #6FB0A4, sodium orange accent, deep blue-black",
+    statue:"frosted translucent teal resin, like a figure half made of mist",
+    plinth:"a low hexagonal plinth of wet dark stone",
+    avoid:"jump-scare gore, cartoon ghosts, bright daylight"},
   matter:{hex:"#7C7F86",mood:"dry, precise, disenchanted",
-    scene:"A scientific specimen plate: the 'spirit' shown as a physical phenomenon, with cross-sections, measured diagram lines and a clinical layout, like a 19th-century natural-history engraving.",
-    palette:"desaturated graphite grey, one faint phosphor-green trace"}
+    env:"a 19th-century natural history plate: specimen layout, measured leader lines, blank labels, cross-sections",
+    light:"flat, even, clinical light with no drama",
+    palette:"graphite #7C7F86, paper white, one faint phosphor-green trace",
+    statue:"white museum plaster with engraved measurement lines and clear glass parts",
+    plinth:"a low hexagonal plaster plinth with a brass scale ruler",
+    avoid:"mystical glow, supernatural drama"}
 };
+
+/* 本體權能 → 鏡頭語言:權能越高,鏡頭越低、越廣角、主體越壓迫;權能越低,鏡頭越近越平視 */
+function powerCamera(v){
+  if(v>=80) return "extreme low angle, 24mm wide lens, the subject so large it overflows the frame";
+  if(v>=55) return "low angle, 35mm lens, the subject towering over the viewer";
+  if(v>=35) return "eye level, 50mm lens, the subject at human scale";
+  return "slightly high angle, 85mm lens, close and quiet, the subject small in its space";
+}
+/* 向人性 → 光的溫度 */
+function valenceLight(v){
+  if(v>=70) return "warm, soft wrap-around light on the face";
+  if(v>=45) return "neutral, balanced light";
+  if(v>=25) return "hard side light that leaves half the face in shadow";
+  return "cold under-lighting and a hard shadow across the eyes";
+}
 
 /* 六軸 → 視覺語彙:讓圖像本身也「編碼」數值(形狀即身份的延伸)。門檻由高至低。 */
 const AXIS_VISUAL=[
   [[80,"an overwhelming, cosmic-scale presence that dwarfs the frame"],[55,"a commanding, godlike stature"],[35,"a grounded, human-scale presence"],[0,"a faint, fragile, barely-there presence"]],
-  [[80,"the background opens onto an entire cosmos"],[55,"a vast landscape or open sea stretches behind"],[35,"set in one town, one street or one temple"],[0,"an intimate close space: a room, an altar, a bedside"]],
+  [[80,"the space around the subject feels infinite, opening onto the whole cosmos"],[55,"the space opens wide behind the subject, with glimpses of vast land or sea"],[35,"the space is the size of one town, one street or one temple"],[0,"the space is close and intimate: a room, an altar, a bedside"]],
   [[70,"warm, protective, benevolent light"],[45,"an impartial, neutral mood"],[25,"an unsettling, dangerous undertone"],[0,"hostile, predatory menace"]],
   [[70,"offerings, incense and handwritten prayers around it: approachable"],[40,"ritual objects hint at bargains and exchange"],[0,"no offerings anywhere: untouchable, indifferent to prayer"]],
   [[70,"crowded with devotion: many small lights and lanterns"],[40,"a few traces of worship remain"],[0,"forgotten, dusty and unlit"]],
-  [[75,"it stands on a threshold (doorway, shoreline, the edge of sleep) and parts of it dissolve into mist"],[50,"twilight atmosphere between two states"],[0,"solidly of this world, in clear light"]]
+  [[75,"it stands on a threshold (doorway, shoreline, the edge of sleep) and parts of it dissolve into mist"],[50,"twilight atmosphere between two states"],[0,"it is solidly of this world, with no mist"]]
 ];
 function axisVisual(i,v){for(const[t,s] of AXIS_VISUAL[i]){if(v>=t)return s;}return"";}
 

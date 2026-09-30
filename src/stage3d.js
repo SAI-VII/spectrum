@@ -1,11 +1,46 @@
 /* 立體台:抽屜內的 3D 舞台(three.js,經 import map 由 CDN 載入)
    三種內容,依素材自動選擇:
-   1. GLB 模型   —— image-to-3D 工具(Meshy、Tripo、Hunyuan3D⋯)匯出的真 3D 模型
+   1. GLB 模型   —— Meshy 等 image-to-3D 工具匯出的真 3D 模型,以展示櫃規格呈現:
+                    所屬環色調的攝影棚環境光、暖白主光＋環色輪廓光、接觸陰影、光環地台、可拖曳縮放
    2. 肖像＋深度 —— ChatGPT 生成的圖像,以深度圖把平面推成浮雕,游標移動即見視差
                     沒有深度圖時,以亮度＋中心權重自動估算(近似,暗底圖版效果最好)
    3. 六軸晶體   —— 無素材時的預設:把雷達多邊形擠出成晶體,形狀即身份 */
 
 const loadThree=(()=>{ let p=null; return ()=>p||(p=import("three").catch(err=>{p=null;throw err;})); })();
+
+/* 共用 GLTF 載入器:Meshopt(優化後的網頁模型)與 Draco(外來模型)都能讀 */
+const loadGLTF=(()=>{
+  let p=null;
+  const get=()=>p||(p=Promise.all([import("three/addons/loaders/GLTFLoader.js"),import("three/addons/libs/meshopt_decoder.module.js"),import("three/addons/loaders/DRACOLoader.js")])
+    .then(([{GLTFLoader},{MeshoptDecoder},{DRACOLoader}])=>{
+      const l=new GLTFLoader(); l.setMeshoptDecoder(MeshoptDecoder);
+      const d=new DRACOLoader(); d.setDecoderPath("https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/libs/draco/gltf/"); l.setDRACOLoader(d);
+      return l;
+    }).catch(err=>{p=null;throw err;}));
+  return url=>get().then(l=>l.loadAsync(url));
+})();
+
+/* 所屬環色調的攝影棚:暖白柔光箱在左上前方,兩條環色燈條在後方,地面微弱反光。
+   以 PMREM 轉成環境光,令模型的金屬、漆面、大理石都反射出同一環的顏色。 */
+function bandEnvironment(T,renderer,hex,cache){
+  if(cache.has(hex)) return cache.get(hex);
+  const s=new T.Scene(), band=new T.Color(hex);
+  s.add(new T.Mesh(new T.BoxGeometry(12,12,12),new T.MeshBasicMaterial({color:0x07080b,side:T.BackSide})));
+  const panel=(w,h,color,k,pos)=>{ const m=new T.Mesh(new T.PlaneGeometry(w,h),new T.MeshBasicMaterial({color:new T.Color(color).multiplyScalar(k),side:T.DoubleSide})); m.position.set(...pos); m.lookAt(0,0,0); s.add(m); };
+  panel(4.5,3,0xfff1de,7,[-3.2,3.6,3.2]);
+  panel(1.1,7,band,6,[4.6,1,-3.4]);
+  panel(1.1,7,band,4,[-4.6,1,-3.4]);
+  panel(8,1.2,0x2c2723,1.4,[0,-5.4,0]);
+  const pm=new T.PMREMGenerator(renderer), tex=pm.fromScene(s,.03).texture;
+  pm.dispose(); s.traverse(o=>{ o.geometry?.dispose(); o.material?.dispose(); });
+  cache.set(hex,tex); return tex;
+}
+function shadowCanvas(){
+  const c=document.createElement("canvas"); c.width=c.height=256;
+  const g=c.getContext("2d"), r=g.createRadialGradient(128,128,0,128,128,128);
+  r.addColorStop(0,"rgba(0,0,0,.6)"); r.addColorStop(.5,"rgba(0,0,0,.22)"); r.addColorStop(1,"rgba(0,0,0,0)");
+  g.fillStyle=r; g.fillRect(0,0,256,256); return c;
+}
 
 let GLOW_CANVAS=null;
 function glowCanvas(){
@@ -46,12 +81,12 @@ function depthCanvas(img,{auto}){
 }
 
 const Stage3D=(()=>{
-  let T=null, renderer, scene, camera, clock, raf=0, host=null, obj=null, ro=null, token=0;
-  const pointer={x:0,y:0,tx:0,ty:0}, drag={x:0,y:0,on:false,px:0,py:0};
+  let T=null, renderer, scene, camera, clock, controls=null, raf=0, host=null, obj=null, ro=null, token=0, mixer=null, roomEnv=null;
+  const pointer={x:0,y:0,tx:0,ty:0}, drag={x:0,y:0,on:false,px:0,py:0}, envCache=new Map();
   const reduced=matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   async function init(){
-    const [mod,{RoomEnvironment}]=await Promise.all([loadThree(),import("three/addons/environments/RoomEnvironment.js")]);
+    const [mod,{RoomEnvironment},{OrbitControls}]=await Promise.all([loadThree(),import("three/addons/environments/RoomEnvironment.js"),import("three/addons/controls/OrbitControls.js")]);
     T=mod;
     renderer=new T.WebGLRenderer({antialias:true,alpha:true,powerPreference:"low-power"});
     renderer.setPixelRatio(Math.min(devicePixelRatio,2));
@@ -59,16 +94,19 @@ const Stage3D=(()=>{
     renderer.toneMapping=T.ACESFilmicToneMapping; renderer.toneMappingExposure=.9;
     scene=new T.Scene(); scene.environmentIntensity=.35;
     const pm=new T.PMREMGenerator(renderer);
-    scene.environment=pm.fromScene(new RoomEnvironment(),.04).texture;
+    roomEnv=pm.fromScene(new RoomEnvironment(),.04).texture;
     pm.dispose();
-    camera=new T.PerspectiveCamera(35,1,.1,100); camera.position.set(0,0,4.2);
+    camera=new T.PerspectiveCamera(35,1,.05,100); camera.position.set(0,0,4.2);
     clock=new T.Clock();
     const cv=renderer.domElement;
-    cv.setAttribute("role","img"); cv.setAttribute("aria-label","立體台:移動游標看視差,拖曳旋轉");
+    cv.setAttribute("role","img"); cv.setAttribute("aria-label","立體台:拖曳旋轉,模型可用滾輪或雙指縮放");
+    controls=new OrbitControls(camera,cv);
+    Object.assign(controls,{enableDamping:true,dampingFactor:.08,enablePan:false,minDistance:2.4,maxDistance:9,autoRotateSpeed:1.1,enabled:false});
+    controls.addEventListener("start",()=>{ controls.autoRotate=false; });
     cv.addEventListener("pointermove",ev=>{
       const r=cv.getBoundingClientRect();
       pointer.tx=((ev.clientX-r.left)/r.width-.5)*2; pointer.ty=((ev.clientY-r.top)/r.height-.5)*2;
-      if(drag.on){ drag.y+=(ev.clientX-drag.px)*.01; drag.x=Math.max(-1,Math.min(1,drag.x+(ev.clientY-drag.py)*.01)); drag.px=ev.clientX; drag.py=ev.clientY; }
+      if(drag.on&&!controls.enabled){ drag.y+=(ev.clientX-drag.px)*.01; drag.x=Math.max(-1,Math.min(1,drag.x+(ev.clientY-drag.py)*.01)); drag.px=ev.clientX; drag.py=ev.clientY; }
     });
     cv.addEventListener("pointerdown",ev=>{ drag.on=true; drag.px=ev.clientX; drag.py=ev.clientY; });
     ["pointerup","pointercancel","pointerleave"].forEach(t=>cv.addEventListener(t,()=>{ drag.on=false; if(t!=="pointerup"){pointer.tx=0;pointer.ty=0;} }));
@@ -85,7 +123,7 @@ const Stage3D=(()=>{
     if(!o) return;
     o.traverse(n=>{
       n.geometry?.dispose();
-      [].concat(n.material||[]).forEach(m=>m.dispose());
+      [].concat(n.material||[]).forEach(m=>{ for(const k in m){ if(m[k]?.isTexture) m[k].dispose(); } m.dispose(); });
     });
     (o.userData.tex||[]).forEach(t=>t.dispose());
   }
@@ -151,21 +189,34 @@ const Stage3D=(()=>{
     return {obj:g,depth:!!dimg};
   }
 
+  /* 展示櫃:模型高度統一為 2.1,腳底落在地台上;環色光環地台 ＋ 接觸陰影 ＋ 暖白主光與環色輪廓光 */
   async function buildModel(url,col){
-    const [{GLTFLoader},{DRACOLoader}]=await Promise.all([import("three/addons/loaders/GLTFLoader.js"),import("three/addons/loaders/DRACOLoader.js")]);
-    const loader=new GLTFLoader();
-    const draco=new DRACOLoader(); draco.setDecoderPath("https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/libs/draco/gltf/");
-    loader.setDRACOLoader(draco);
-    const gltf=await loader.loadAsync(url);
-    const root=gltf.scene, box=new T.Box3().setFromObject(root), size=box.getSize(new T.Vector3()), center=box.getCenter(new T.Vector3());
-    root.position.sub(center);
-    const inner=new T.Group(); inner.add(root); inner.scale.setScalar(2.2/Math.max(size.x,size.y,size.z,1e-6));
-    const g=new T.Group(); g.add(inner); g.userData.kind="model";
-    lights(g,new T.Color(col));
+    const gltf=await loadGLTF(url);
+    const root=gltf.scene, c=new T.Color(col);
+    const box=new T.Box3().setFromObject(root), size=box.getSize(new T.Vector3()), ctr=box.getCenter(new T.Vector3());
+    const s=Math.min(2.1/Math.max(size.y,1e-6),2.6/Math.max(size.x,size.z,1e-6));
+    root.scale.setScalar(s); root.position.set(-ctr.x*s,-box.min.y*s-1.05,-ctr.z*s);
+    root.traverse(n=>{ if(n.isMesh){ n.castShadow=false; [].concat(n.material||[]).forEach(m=>{ if(m.map) m.map.anisotropy=8; }); } });
+    const g=new T.Group(); g.add(root); g.userData.kind="model";
+    const foot=Math.max(size.x,size.z)*s;
+    const stex=new T.CanvasTexture(shadowCanvas());
+    const shadow=new T.Mesh(new T.PlaneGeometry(1,1),new T.MeshBasicMaterial({map:stex,transparent:true,depthWrite:false}));
+    shadow.rotation.x=-Math.PI/2; shadow.scale.setScalar(foot*1.7); shadow.position.y=-1.049;
+    const ring=new T.Mesh(new T.RingGeometry(foot*.62,foot*.66,96),new T.MeshBasicMaterial({color:c,transparent:true,opacity:.55,side:T.DoubleSide,depthWrite:false}));
+    ring.rotation.x=-Math.PI/2; ring.position.y=-1.048;
+    const gtex=new T.CanvasTexture(glowCanvas());
+    const halo=new T.Mesh(new T.PlaneGeometry(1,1),new T.MeshBasicMaterial({map:gtex,color:c,transparent:true,opacity:.35,blending:T.AdditiveBlending,depthWrite:false}));
+    halo.rotation.x=-Math.PI/2; halo.scale.setScalar(foot*2.4); halo.position.y=-1.047;
+    const key=new T.DirectionalLight(0xfff4e6,1.8); key.position.set(-2.2,3.2,3.4);
+    const rim=new T.DirectionalLight(c,3.2); rim.position.set(2.8,1.8,-3.2);
+    const rim2=new T.DirectionalLight(c,1.6); rim2.position.set(-2.8,.8,-2.6);
+    g.add(shadow,ring,halo,key,rim,rim2,new T.AmbientLight(0xffffff,.12));
+    g.userData.tex=[stex,gtex];
+    if(gltf.animations?.length){ g.userData.clips=gltf.animations; }
     return g;
   }
 
-  async function show(el,e,col,assets){
+  async function show(el,e,col,assets,prefer){
     const my=++token;
     try{ if(!T) await init(); }
     catch(err){ console.warn("立體台未能載入 three.js",err); return {ok:false,label:"六軸側影 · 此環境未能載入 3D"}; }
@@ -173,41 +224,58 @@ const Stage3D=(()=>{
     host=el; host.appendChild(renderer.domElement); ro.disconnect(); ro.observe(host); resize();
     drag.x=drag.y=0;
     let next=null, label="六軸晶體 · 拖曳旋轉";
+    const wantModel=assets?.model&&!(prefer==="portrait"&&assets?.img);
     try{
-      if(assets?.model){ next=await buildModel(assets.model,col); label="GLB 模型 · 拖曳旋轉"; }
+      if(wantModel){ next=await buildModel(assets.model,col); label=`3D 模型${assets.source?` · ${assets.source}`:""} · 拖曳旋轉、滾輪縮放`; }
       else if(assets?.img){ const r=await buildPortrait(assets.img,assets.depth,col); next=r.obj; label=r.depth?"肖像 · 深度圖立體化":"肖像 · 自動估算深度(近似)"; }
     }catch(err){ console.warn("素材載入失敗",err); next=null; label="素材未能載入 · 改顯六軸晶體"; }
     if(my!==token){ dispose(next); return {ok:true,label:""}; }
     if(!next) next=buildCrystal(e,col);
     if(obj){ scene.remove(obj); dispose(obj); }
+    mixer?.stopAllAction(); mixer=null;
     obj=next; scene.add(obj);
+    const isModel=obj.userData.kind==="model";
+    scene.environment=isModel?bandEnvironment(T,renderer,col,envCache):roomEnv;
+    scene.environmentIntensity=isModel?1:.35;
+    renderer.toneMappingExposure=isModel?1:.9;
+    controls.enabled=isModel;
+    renderer.domElement.style.touchAction=isModel?"none":"pan-y";
+    if(isModel){
+      camera.fov=32; camera.updateProjectionMatrix();
+      camera.position.set(1.2,.5,5.2); controls.target.set(0,-.05,0); controls.autoRotate=!reduced; controls.update();
+      if(obj.userData.clips){ mixer=new T.AnimationMixer(obj); mixer.clipAction(obj.userData.clips[0]).play(); }
+    }else{ camera.fov=35; camera.updateProjectionMatrix(); }
     start();
-    return {ok:true,label};
+    return {ok:true,label,kind:obj.userData.kind};
   }
 
   function tick(){
-    const t=clock.getElapsedTime();
+    const dt=clock.getDelta(), t=clock.elapsedTime;
     pointer.x+=(pointer.tx-pointer.x)*.08; pointer.y+=(pointer.ty-pointer.y)*.08;
     const sway=reduced?0:1;
-    if(obj?.userData.kind==="portrait"){
+    const k=obj?.userData.kind;
+    if(k==="portrait"){
       const {w,h}=obj.userData, vh=2*camera.position.z*Math.tan(camera.fov*Math.PI/360), vw=vh*camera.aspect;
       obj.scale.setScalar(Math.min(1,vw*.92/w,vh*.92/h));
       camera.position.set(pointer.x*.65+Math.sin(t*.5)*.08*sway+drag.y*.4,-pointer.y*.45+Math.sin(t*.37)*.05*sway,4.2);
       camera.lookAt(0,0,0);
+    }else if(k==="model"){
+      mixer?.update(dt);
+      controls.update();
     }else if(obj){
       camera.position.set(0,0,4.2); camera.lookAt(0,0,0);
-      const spin=obj.userData.kind==="model"?t*.4:Math.sin(t*.6)*.7;
-      obj.rotation.y=drag.y+spin*sway+pointer.x*.35;
+      obj.rotation.y=drag.y+Math.sin(t*.6)*.7*sway+pointer.x*.35;
       obj.rotation.x=drag.x-pointer.y*.25;
     }
     renderer.render(scene,camera);
   }
   function start(){
     if(raf) return;
+    clock.getDelta();
     const loop=()=>{ raf=requestAnimationFrame(loop); if(!document.hidden) tick(); };
     loop();
   }
-  function stop(){ token++; cancelAnimationFrame(raf); raf=0; }
+  function stop(){ token++; cancelAnimationFrame(raf); raf=0; if(controls) controls.enabled=false; }
 
   return {show,stop};
 })();

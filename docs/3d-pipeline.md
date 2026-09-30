@@ -8,7 +8,7 @@
 |---|---|---|---|---|
 | L0 · 2.5D | CSS 3D 變換:印記傾斜、光澤、翻牌 | 介面有厚度 | 零 | 已完成 |
 | L1 · 深度浮雕 | 肖像 ＋ 深度圖 → 在 WebGL 把平面推成浮雕 | 游標一動就有真視差,像全息卡 | 每張圖 1 分鐘 | 已完成(拖放即用) |
-| L2 · 真 3D 模型 | image-to-3D 工具生成 GLB | 可 360° 旋轉、可放進 3D 場景 | 每位 5–15 分鐘 | 已支援載入 GLB |
+| L2 · 真 3D 模型 | Meshy 批量生成 GLB | 可 360° 旋轉、放進星宇 | 每位 30 點、1–3 分鐘 | 全自動流程已完成 |
 | L3 · 3D 場景 | Gaussian Splatting、3D 世界生成 | 整座廟、整條街變成可走入的空間 | 高 | 路線圖 |
 
 ---
@@ -21,7 +21,7 @@
 
 ### 步驟
 
-1. **生成肖像**:在 app 打開靈體 → 「ChatGPT 圖像指令」→「圖鑑肖像」→ 複製 → 貼到 ChatGPT。
+1. **生成肖像**:在 app 打開靈體 → 「圖像與 3D 指令」→「圖鑑插畫」→ 複製 → 貼到 ChatGPT。
    指令已要求「剪影清晰、與背景分離」,這一點對深度效果最重要。
 2. **取得深度圖**(三選一):
 
@@ -52,70 +52,25 @@
 
 ---
 
-## L2 · 真 3D 模型(image-to-3D)
+## L2 · 真 3D 模型(Meshy)
 
-### 1. 生成建模用參考圖
+已經寫成全自動流程,完整步驟見 **[`meshy-pipeline.md`](meshy-pipeline.md)**。摘要:
 
-在 app 打開靈體 → 「ChatGPT 圖像指令」→「3D 建模用」。這段指令刻意要求:
+1. (可選但建議)用 [`prompts/refs/`](prompts/refs/) 的指令請 ChatGPT 生成灰底雕像參考圖,存成 `assets/refs/{編號}.png`。
+2. `node tools/meshy/generate.mjs`:有參考圖的走 Image to 3D,有四視圖的走 Multi-Image to 3D,其餘走 Text to 3D。可中斷、可續、可設點數上限。
+3. `node tools/meshy/optimize.mjs`:每位產生展示版(≤ 60,000 面)與星宇用的輕量版(≤ 4,000 面),WebP 貼圖 ＋ Meshopt 壓縮。
+4. `node tools/meshy/thumbs.mjs`:以統一鏡頭與燈光渲染透明背景縮圖。
+5. app 自動讀取 `assets/models.js`:圖鑑顯示雕像縮圖,抽屜變成展示櫃,星宇按遠近載入雕像。
 
-- 單一物件、全身入鏡、四邊留白
-- 3/4 前側視角、中灰無縫背景(#808080)
-- 平均柔光、無投影、無景深、無動態模糊
-- 沒有和身體分離的煙霧、火花、粒子
-- 剪影連成一體、啞光材質、站在六角底座上
-
-這些都是 image-to-3D 工具最容易出錯的地方。抽象的靈體(法則、物質兩環)會改為要求一件「雕塑物件」,例如渾天儀、光之方尖碑。
-
-需要更準的背面時,接著貼「四視圖」指令,一次拿到前、左、後、右四張一致的圖。
-
-### 2. 轉成 3D
-
-| 工具 | 特點 | 適合 |
-|---|---|---|
-| **Tripo** | 綜合質素、工作流、API、多圖輸入最平衡 | 首選,尤其用四視圖時 |
-| **Meshy 6** | 最普及;水密幾何、Low Poly 模式、原生四邊面重拓撲 | 要放進遊戲或即時場景 |
-| **Rodin Gen-2.5(Hyper3D)** | 幾何細節最豐富,可達千萬面 | 要做高精度雕塑或 3D 列印 |
-| **Hunyuan3D(騰訊)** | 開源權重,可自行部署 | 要大量生成、控制成本 |
-| **TRELLIS.2(微軟)** | 研究前沿 | 試驗 |
-
-一般做法:上傳參考圖(或四視圖)→ 生成 → 選「帶貼圖」→ 匯出 **GLB**。
-
-### 3. 優化
-
-放進網頁前,模型要瘦身。建議上限:5 萬個三角面、2K 貼圖、單檔 10 MB 以內。
-
-```bash
-# 需要 Node.js;一次過做去重、焊接、簡化、貼圖轉 WebP
-npx @gltf-transform/cli optimize input.glb assets/models/121.glb --texture-compress webp --simplify-ratio 0.5
-```
-
-app 已接上 Draco 解碼器,Draco 壓縮的 GLB 在一般網頁可直接讀;但在 claude.ai 的 Artifact 內,外部解碼檔案會被擋,所以要在 Artifact 內展示的模型,優化時請不要用 Draco 壓縮。
-
-### 4. 放進 app
-
-- 即時試看:把 `.glb` 拖到立體台,或按「GLB 模型」。
-- 永久加入:放到 `assets/models/{編號}.glb`,在 `assets/manifest.js` 加 `model: "assets/models/121.glb"`。有模型時,立體台會優先顯示模型,並自動置中、縮放、打光、緩慢旋轉。
-
-### 5. 可選:Blender 修整
-
-image-to-3D 的模型常見問題與修法:
-
-| 問題 | 修法 |
-|---|---|
-| 底部破洞、懸空碎片 | Blender:Select Linked → 刪除碎片;Fill Holes |
-| 貼圖接縫明顯 | 用工具內建的 re-texture,或在 Blender 以 Texture Paint 補 |
-| 方向不對 | 旋轉後 Apply Transform(Ctrl+A)再匯出 |
-| 太多面 | Decimate 修改器(Ratio 0.3–0.5) |
-
----
+其他工具(Tripo、Rodin、Hunyuan3D、TRELLIS)匯出的 GLB 也可以放進 `assets/models/raw/{編號}.glb`,再從第 3 步開始。
 
 ## L3 · 3D 場景(路線圖)
 
 下一步是把「環」本身變成場景,而不只是一粒粒晶體:
 
-- **Gaussian Splatting**:用手機繞著真實的天后廟、祖先神台拍一圈影片,用 Luma、Polycam 或 Postshot 生成 splat,再以 three.js 的 splat 載入器放進星宇的對應環。「信」與「念」兩環會變成真實空間。
+- **Gaussian Splatting**:用手機繞著真實的天后廟、祖先神台拍一圈影片生成 splat,或把七環主視覺交給 World Labs Marble 之類的「圖生 3D 世界」工具,再以 Spark 或 three.js r186 起內建的 splat 渲染器放進星宇的對應環。「信」與「念」兩環會變成真實空間。
 - **3D 世界生成**:把第 3 節的七環主視覺交給「圖生 3D 場景」類工具,生成可環視的背景,作為每一環的天空盒。
-- **星宇替換**:79 位已立傳靈體都有 GLB 之後,星宇的晶體可按距離切換:遠看是晶體,拉近就換成模型(Level of Detail)。
+- **星宇替換**:已完成。有輕量版模型的靈體,星宇會按離鏡頭遠近逐個把晶體換成雕像。
 
 ---
 

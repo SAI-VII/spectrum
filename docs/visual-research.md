@@ -1,5 +1,7 @@
 # 靈體圖鑑 · 本體光譜:視覺化研究與改版說明
 
+> 第二輪研究(視覺最佳級別、全部靈體 3D 化)見 [`visual-excellence.md`](visual-excellence.md) 與 [`meshy-pipeline.md`](meshy-pipeline.md)。
+
 這份研究回答三個問題:原作好在哪、缺在哪;一個「極具視覺畫面」的 app 從何而來;以及這次改版具體做了甚麼、下一步做甚麼。
 
 ---
@@ -121,7 +123,7 @@
 | 比較 | 最多三位,疊加雷達、數值表,並自動寫出差距最大的軸與反比是否成立 |
 | 收藏與遇見 | ★ 收藏、打開過即「已遇見」;頁尾按環顯示收集進度;可只看收藏 |
 | 分享卡 | 一鍵生成 1080×1350 PNG;有肖像時用上肖像 |
-| ChatGPT 圖像指令 | 每位靈體四種指令:圖鑑肖像、3D 建模用、四視圖、深度圖 |
+| 圖像與 3D 指令 | 每位靈體六種:圖鑑插畫、3D 參考圖、四視圖、Meshy 文字、Meshy 貼圖、深度圖 |
 | 網址錨點 | `#e121` 直接打開天后;`#cosmos`、`#omen`、`#quiz` |
 | 鍵盤 | `/` 搜尋、`Esc` 關閉、`← →` 換靈 |
 
@@ -144,7 +146,8 @@ index.html              頁面骨架、import map
 src/styles.css          原檔樣式 ＋ 新元件
 src/data/entities.js    237 位靈體(原資料,未改動)
 src/data/lore.js        六軸、七環、語域(原常數)＋ 美術方向、測驗、靈籤、聲景
-src/prompts.js          ChatGPT 圖像指令產生器
+src/data/canon.js       237 位靈體的視覺正典(外形、法器、姿態、材質)
+src/prompts.js          圖像與 3D 指令產生器
 src/core.js             圖鑑、印記、法陣、抽屜、AI
 src/features.js         收藏、立像、比較、分享卡、測驗、靈籤、聲景
 src/stage3d.js          立體台(晶體／深度浮雕／GLB)
@@ -167,11 +170,11 @@ tools/gen-prompts.js    產生 79 位靈體的指令集
 
 **圖像**
 4. 用 [`chatgpt-image-prompts.md`](chatgpt-image-prompts.md) 先做七環主視覺,放進每一環的頁首。
-5. 按 [`prompts/flagship-prompts.md`](prompts/flagship-prompts.md) 為 79 位已立傳靈體生成肖像與深度圖。
-6. 每環挑一至兩位做 GLB 模型(建議:安那刻、哈得斯、美杜莎、天后、夢訪靈、白衣女鬼、鬼火)。
+5. 按 [`prompts/plates/`](prompts/plates/) 為各靈體生成插畫與深度圖。
+6. 用 Meshy 把全部 237 位 3D 化(已寫成全自動流程,見 [`meshy-pipeline.md`](meshy-pipeline.md))。
 
 **3D**
-7. 星宇按距離切換:遠看晶體,拉近換成模型。
+7. 星宇按距離切換:遠看晶體,拉近換成模型(已完成,見第二輪研究)。
 8. 以 Gaussian Splatting 把真實的天后廟、祖先神台放進「信」「念」兩環。
 
 **社群(Artifact 的共享能力)**

@@ -1,0 +1,59 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>thumb renderer</title>
+<script type="importmap">{"imports":{"three":"./node_modules/three/build/three.module.js","three/addons/":"./node_modules/three/examples/jsm/"}}</script>
+</head><body style="margin:0;background:transparent">
+<script type="module">
+/* 縮圖渲染頁:由 thumbs.mjs 以無頭瀏覽器開啟。統一鏡頭、燈光與背景,令 237 張縮圖像同一套圖鑑。 */
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
+
+const SIZE = 768;
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.setSize(SIZE, SIZE); renderer.setPixelRatio(1);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+renderer.setClearColor(0x000000, 0);
+document.body.appendChild(renderer.domElement);
+const pm = new THREE.PMREMGenerator(renderer);
+const env = pm.fromScene(new RoomEnvironment(), 0.04).texture;
+const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+
+function shadowTex() {
+  const c = document.createElement("canvas"); c.width = c.height = 256;
+  const g = c.getContext("2d"), r = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+  r.addColorStop(0, "rgba(0,0,0,.55)"); r.addColorStop(.55, "rgba(0,0,0,.18)"); r.addColorStop(1, "rgba(0,0,0,0)");
+  g.fillStyle = r; g.fillRect(0, 0, 256, 256);
+  return new THREE.CanvasTexture(c);
+}
+
+window.renderThumb = async (url, hex) => {
+  const scene = new THREE.Scene(); scene.environment = env; scene.environmentIntensity = .55;
+  const band = new THREE.Color(hex);
+  const key = new THREE.DirectionalLight(0xfff4e6, 2.2); key.position.set(-2, 3, 3);
+  const rim = new THREE.DirectionalLight(band, 4.5); rim.position.set(2.5, 2, -3);
+  const rim2 = new THREE.DirectionalLight(band, 2.0); rim2.position.set(-2.5, 1, -2);
+  scene.add(key, rim, rim2, new THREE.AmbientLight(0xffffff, .15));
+  const gltf = await loader.loadAsync(url);
+  const root = gltf.scene;
+  const box = new THREE.Box3().setFromObject(root), size = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
+  const s = 1 / Math.max(size.x, size.y, size.z);
+  root.scale.setScalar(s); root.position.set(-c.x * s, -box.min.y * s, -c.z * s);
+  scene.add(root);
+  const h = size.y * s, w = Math.max(size.x, size.z) * s;
+  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: shadowTex(), transparent: true, depthWrite: false }));
+  shadow.rotation.x = -Math.PI / 2; shadow.scale.setScalar(w * 1.6); shadow.position.y = .001; scene.add(shadow);
+  const cam = new THREE.PerspectiveCamera(28, 1, .01, 100);
+  const radius = Math.sqrt(h * h + w * w) / 2, dist = radius / Math.sin(THREE.MathUtils.degToRad(28 / 2)) * 1.02;
+  const az = THREE.MathUtils.degToRad(22), el = THREE.MathUtils.degToRad(10), target = new THREE.Vector3(0, h / 2, 0);
+  cam.position.set(Math.sin(az) * Math.cos(el) * dist, h / 2 + Math.sin(el) * dist, Math.cos(az) * Math.cos(el) * dist);
+  cam.lookAt(target);
+  renderer.render(scene, cam);
+  const out = renderer.domElement.toDataURL("image/png");
+  root.traverse(o => { o.geometry?.dispose(); [].concat(o.material || []).forEach(m => { for (const k in m) if (m[k]?.isTexture) m[k].dispose(); m.dispose(); }); });
+  shadow.material.map.dispose(); shadow.material.dispose(); shadow.geometry.dispose();
+  return out;
+};
+window.thumbReady = true;
+</script></body></html>

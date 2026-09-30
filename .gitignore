@@ -1,0 +1,4 @@
+node_modules/
+# Meshy 原始高模(每個 5–50 MB),只保留優化後的網頁版本
+assets/models/raw/
+.DS_Store

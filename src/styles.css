@@ -229,6 +229,20 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:70;opa
 
 svg.radar{width:100%;max-width:420px;height:auto}
 
+/* 3D 雕像縮圖:印記縮到右下角;「光照」以亮度與飽和度重新點亮 */
+.cell .tw{position:relative;display:block;line-height:0}
+.cell .thumb{display:block;object-fit:contain;transition:filter .3s ease,transform .3s ease;
+  filter:brightness(calc(.3 + var(--lk,1) * .72)) saturate(var(--lk,1)) drop-shadow(0 0 9px color-mix(in srgb,currentColor 38%,transparent))}
+.cell .tw .glyph{position:absolute;right:-6px;bottom:-2px;opacity:.9}
+.cell.has-thumb:hover .thumb{transform:translateY(-2px) scale(1.05)}
+.sim-item .thumb{width:30px;height:30px;object-fit:contain;flex:none}
+.om-thumb{width:128px;height:128px;object-fit:contain;filter:drop-shadow(0 0 18px color-mix(in srgb,var(--oc) 55%,transparent))}
+/* 各環主視覺(assets/manifest.js 的 bands) */
+.band.has-art::before{content:"";position:absolute;left:-22px;right:-22px;top:0;height:min(320px,42vw);z-index:0;pointer-events:none;
+  background:var(--band-art) center/cover no-repeat;opacity:.34;
+  -webkit-mask-image:linear-gradient(to bottom,#000 15%,transparent);mask-image:linear-gradient(to bottom,#000 15%,transparent)}
+.stage:fullscreen{height:100vh;margin:0;border:0}
+
 /* 星宇 3D */
 body.view-cosmos .lens-hint{display:none}
 #cosmos{position:relative;height:calc(100dvh - var(--ctl-h));min-height:460px;overflow:hidden;

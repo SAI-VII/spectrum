@@ -1,6 +1,6 @@
 /* 靈體圖鑑 · 功能模組
    Store 本機偏好 · Collection 遇見／收藏 · Portraits 立像(IndexedDB＋登記冊) · StageUI 立體台操作
-   Compare 對照 · PromptPanel ChatGPT 圖像指令 · ShareCard 分享卡 · Quiz 本命靈 · Omen 今日靈籤
+   Compare 對照 · PromptPanel 圖像與 3D 指令 · ShareCard 分享卡 · Quiz 本命靈 · Omen 今日靈籤
    Sound 聲景 · AI 經 Claude 續寫 · Modal/Toast/Hash 介面小工具 */
 
 const Store={
@@ -55,13 +55,23 @@ const Collection=(()=>{
     toggleFav(r){ r=+r; fav.has(r)?fav.delete(r):fav.add(r); Store.set("fav",[...fav]); return fav.has(r); },
     renderProgress(){
       const el=$("#progress"); if(!el) return;
-      const nImg=ENTITIES.filter(e=>Portraits.has(e.rank)).length;
-      el.innerHTML=`<p class="prog-h">已遇見 <b>${[...seen].filter(r=>byRank(r)).length}</b> / ${ENTITIES.length} · 收藏 <b>${fav.size}</b> · 立像 <b>${nImg}</b></p>`+
+      const nImg=ENTITIES.filter(e=>Portraits.has(e.rank)).length, n3d=Models.count();
+      el.innerHTML=`<p class="prog-h">已遇見 <b>${[...seen].filter(r=>byRank(r)).length}</b> / ${ENTITIES.length} · 收藏 <b>${fav.size}</b> · 立像 <b>${nImg}</b> · 3D 化 <b>${n3d}</b> / ${ENTITIES.length}</p>`+
         BANDS.map(b=>{ const L=BAND_LISTS[b.key], n=L.filter(e=>seen.has(e.rank)).length, c=cvar(b.color);
           return `<div><b style="color:${c}">${b.seal}</b>${b.cn}<span class="num">${n}/${L.length}</span><span class="bar"><i style="width:${(n/L.length*100).toFixed(1)}%;background:${c}"></i></span></div>`; }).join("");
     }
   };
 })();
+
+/* ───── 3D 模型登記冊:assets/models.js 由 tools/meshy 自動產生 ───── */
+const Models={
+  entry:r=>(window.SPECTRUM_MODELS||{})[r]||null,
+  /* 只發佈了輕量版時(例如 Artifact),立體台也用輕量版 */
+  glb:r=>Models.entry(r)?.glb||Models.entry(r)?.lod||null,
+  lod:r=>Models.entry(r)?.lod||null,
+  thumb:r=>((window.SPECTRUM_ASSETS||{})[r]||{}).thumb||Models.entry(r)?.thumb||null,
+  count:()=>ENTITIES.filter(e=>Models.glb(e.rank)).length
+};
 
 /* ───── 立像:本機拖放(IndexedDB,只存在這部裝置)＋ assets/manifest.js 登記冊 ───── */
 const Portraits=(()=>{
@@ -82,13 +92,14 @@ const Portraits=(()=>{
       }catch{ res(null); }
     }));
   }
-  const reg=r=>(window.SPECTRUM_ASSETS||{})[r]||{};
+  /* 手寫登記冊(manifest.js)優先於自動產生的模型登記冊(models.js) */
+  const reg=r=>({...(Models.glb(r)?{model:Models.glb(r),source:Models.entry(r).source}:{}),...((window.SPECTRUM_ASSETS||{})[r]||{})});
   async function record(r){ return mem[r]||(local.has(r)?await tx("readonly",s=>s.get(r)):null)||{}; }
   return {
     async init(){ const keys=await tx("readonly",s=>s.getAllKeys()); (keys||[]).forEach(k=>local.add(+k)); },
     has(r){ r=+r; const m=reg(r); return !!(mem[r]?.img||mem[r]?.model||local.has(r)||m.img||m.model); },
     isLocal:r=>!!mem[+r]||local.has(+r),
-    /* 回傳 {img,depth,model,local} 的網址;本機素材優先於登記冊 */
+    /* 回傳 {img,depth,model,source,local} 的網址;本機素材優先於登記冊 */
     async get(r){
       r=+r; live.forEach(u=>URL.revokeObjectURL(u)); live=[];
       const rec=await record(r), m=reg(r), out={};
@@ -96,6 +107,7 @@ const Portraits=(()=>{
         if(rec[k] instanceof Blob){ const u=URL.createObjectURL(rec[k]); live.push(u); out[k]=u; out.local=true; }
         else if(m[k]) out[k]=m[k];
       }
+      if(out.model&&!rec.model&&m.source) out.source=m.source;
       return (out.img||out.model)?out:null;
     },
     async put(r,kind,blob){ r=+r; const rec={...(await record(r))}; rec[kind]=blob; mem[r]=rec; await tx("readwrite",s=>s.put(rec,r)); local.add(r); },
@@ -105,12 +117,15 @@ const Portraits=(()=>{
 
 const StageUI={
   mount(stage,e,col){
-    const rank=e.rank, mode=$("#stage-mode"), clearBtn=$("#pf-clear"), gl=stage.querySelector(".stage-gl");
+    const rank=e.rank, mode=$("#stage-mode"), clearBtn=$("#pf-clear"), swap=$("#pf-swap"), full=$("#pf-full"), gl=stage.querySelector(".stage-gl");
+    let prefer="model";
     const refresh=async()=>{
       const a=await Portraits.get(rank);
       if(state.current!==rank) return;
       clearBtn.hidden=!a?.local;
-      const res=await Stage3D.show(gl,e,col,a);
+      swap.hidden=!(a?.model&&a?.img);
+      swap.textContent=prefer==="model"?"看肖像":"看模型";
+      const res=await Stage3D.show(gl,e,col,a,prefer);
       if(state.current!==rank||!res.label) return;
       mode.textContent=res.label;
       if(!res.ok) gl.innerHTML=`<div class="stage-fallback">${glyph(e,150,col)}</div>`;
@@ -131,6 +146,9 @@ const StageUI={
     });
     pick("#pf-img","img"); pick("#pf-depth","depth"); pick("#pf-model","model");
     clearBtn.addEventListener("click",async()=>{ await Portraits.clear(rank); paint(); refresh(); toast("已移除此靈的本機素材"); });
+    swap.addEventListener("click",()=>{ prefer=prefer==="model"?"portrait":"model"; refresh(); });
+    full.hidden=!stage.requestFullscreen;
+    full.addEventListener("click",()=>{ if(document.fullscreenElement) document.exitFullscreen?.(); else stage.requestFullscreen?.().catch(()=>toast("此環境不支援全螢幕")); });
     ["dragenter","dragover"].forEach(t=>stage.addEventListener(t,ev=>{ ev.preventDefault(); stage.classList.add("drag"); }));
     stage.addEventListener("dragleave",ev=>{ if(!stage.contains(ev.relatedTarget)) stage.classList.remove("drag"); });
     stage.addEventListener("drop",ev=>{ ev.preventDefault(); stage.classList.remove("drag"); take([...ev.dataTransfer.files]); });
@@ -186,7 +204,7 @@ const Compare=(()=>{
   return {has,toggle,render,open};
 })();
 
-/* ───── ChatGPT 圖像指令面板 ───── */
+/* ───── 圖像與 3D 指令面板(ChatGPT 與 Meshy) ───── */
 const PromptPanel={
   toggle(e,btn){
     const slot=$("#pp-slot");
@@ -198,8 +216,9 @@ const PromptPanel={
       `<div class="pp-foot"><span class="pp-note" id="pp-note"></span><button class="btn gold" id="pp-copy">複製指令</button></div></div>`;
     const show=k=>{
       $$("#pp-slot .pp-tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.k===k));
-      $("#pp-text").value=buildImagePrompt(e,k);
-      $("#pp-note").textContent=PROMPT_KINDS.find(x=>x.k===k).note;
+      const txt=buildImagePrompt(e,k), kind=PROMPT_KINDS.find(x=>x.k===k);
+      $("#pp-text").value=txt;
+      $("#pp-note").textContent=`${kind.tool} · ${kind.note}`+(kind.tool==="Meshy"?`(${txt.length} / ${MESHY_MAX} 字元)`:"");
     };
     $$("#pp-slot .pp-tabs button").forEach(b=>b.addEventListener("click",()=>show(b.dataset.k)));
     $("#pp-copy").addEventListener("click",()=>copyText($("#pp-text").value,$("#pp-text")));
@@ -241,9 +260,15 @@ const ShareCard={
     g.font=`400 520px ${serif}`; g.fillStyle=rgba(col,.05); g.textAlign="right"; g.fillText(band.seal,W-50,1240);
     g.textAlign="center"; g.fillStyle="#9B968A"; g.font=`italic 400 34px ${display}`; g.fillText("靈體圖鑑 · An Ontological Spectrum",W/2,92);
 
-    let img=null; const a=noImg?null:await Portraits.get(e.rank);
+    let img=null, statue=null; const a=noImg?null:await Portraits.get(e.rank);
     if(a?.img){ try{ img=await loadImage(a.img); }catch{ img=null; } }
-    if(img){
+    if(!img&&!noImg&&Models.thumb(e.rank)){ try{ statue=await loadImage(Models.thumb(e.rank)); }catch{ statue=null; } }
+    if(statue){
+      const sz=560, s=Math.min(sz/statue.naturalWidth,sz/statue.naturalHeight), w=statue.naturalWidth*s, h=statue.naturalHeight*s;
+      g.drawImage(statue,W/2-w/2,700-h,w,h);
+      g.beginPath(); g.arc(W-190,600,96,0,Math.PI*2); g.fillStyle="rgba(14,16,21,.72)"; g.fill();
+      this.radar(g,e.radar,W-190,600,74,col);
+    }else if(img){
       const bx=110,by=130,bw=860,bh=570, s=Math.max(bw/img.naturalWidth,bh/img.naturalHeight);
       g.save(); g.beginPath(); g.roundRect(bx,by,bw,bh,28); g.clip();
       g.drawImage(img,bx+(bw-img.naturalWidth*s)/2,by+(bh-img.naturalHeight*s)/2,img.naturalWidth*s,img.naturalHeight*s);
@@ -335,7 +360,7 @@ const Omen={
     Modal.open(`<p class="md-eyebrow">${pick.label}</p><h2 class="md-h" id="md-title">撳一下,翻開今日遇見的靈</h2>`+
       `<div class="omen"><div class="omen-card" id="omen-card" role="button" tabindex="0" aria-label="翻牌" style="--oc:${col}">`+
         `<div class="omen-face omen-back"><b>籤</b><span>An Ontological Spectrum</span></div>`+
-        `<div class="omen-face omen-front">${glyph(e,92,col)}<span class="om-band">${band.seal} ${band.cn} · ${e.tier_label||e.tier}</span>`+
+        `<div class="omen-face omen-front">${Models.thumb(e.rank)?`<img class="om-thumb" src="${Models.thumb(e.rank)}" alt="">`:glyph(e,92,col)}<span class="om-band">${band.seal} ${band.cn} · ${e.tier_label||e.tier}</span>`+
           `<span class="who">${e.cn}</span>${e.en?`<span class="en">${e.en}</span>`:""}`+
           `<div class="omen-yiji"><div><b>宜</b>${AXIS_OMEN[hi].yi}</div><div><b>忌</b>${AXIS_OMEN[lo].ji}</div></div></div>`+
       `</div></div><p class="omen-line" id="omen-line" hidden>${firstSentence(e.desc||e.influence||e.brief,80)}</p>`+

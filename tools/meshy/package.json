@@ -1,0 +1,21 @@
+{
+  "name": "spectrum-meshy-tools",
+  "private": true,
+  "type": "module",
+  "description": "靈體圖鑑:Meshy 批量 3D 化、網頁優化、縮圖渲染",
+  "scripts": {
+    "generate": "node generate.mjs",
+    "optimize": "node optimize.mjs",
+    "thumbs": "node thumbs.mjs",
+    "manifest": "node manifest.mjs"
+  },
+  "dependencies": {
+    "@gltf-transform/core": "^4.2.1",
+    "@gltf-transform/extensions": "^4.2.1",
+    "@gltf-transform/functions": "^4.2.1",
+    "meshoptimizer": "^0.22.0",
+    "playwright": "^1.56.1",
+    "sharp": "^0.34.4",
+    "three": "0.170.0"
+  }
+}
