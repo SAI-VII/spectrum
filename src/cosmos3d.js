@@ -1,6 +1,6 @@
 /* 星宇 3D:把整部圖鑑放進一座可旋轉的光譜塔
    · 光譜塔:七環由上(法)而下(物)疊起;每環半徑 = 該環平均「影響半徑」,所以塔身在「念」收得最窄——
-     離中軸最近的,是被記得的人。晶體＝六軸側影擠出,大小＝本體權能,顏色與亮度隨「光照」而變。
+     離中軸最近的,是被記得的人。晶體大小＝本體權能(按平方放大,強弱一眼分明),顏色與亮度隨「光照」而變。
    · 軸空間:任選三軸作 X/Y/Z,每位靈體落在對應座標;X↔Y 顯示相關係數,可以直接檢驗「權能與親密成反比」。
    · 已 3D 化的靈體(assets/models.js 內有 lod 模型)會按離鏡頭遠近逐個載入,把晶體換成雕像。
    · 最後一道「調色」後期:暗角、細微色散與菲林顆粒,令畫面像一格電影而不是一個網頁。 */
@@ -34,14 +34,10 @@ const Cosmos=(()=>{
     return sp;
   }
 
-  function crystalGeo(vals){
-    const key=vals.join(",");
-    if(!geoCache.has(key)){
-      const pts=vals.map((v,i)=>{ const a=Math.PI/2-i*Math.PI/3, r=Math.max(v,8)/100; return new T.Vector2(Math.cos(a)*r,Math.sin(a)*r); });
-      const g=new T.ExtrudeGeometry(new T.Shape(pts),{depth:.16,bevelEnabled:true,bevelThickness:.05,bevelSize:.04,bevelSegments:2});
-      g.center(); geoCache.set(key,g);
-    }
-    return geoCache.get(key);
+  /* 所有靈體共用一枚晶體幾何;大小按本體權能的平方放大,強弱差距更明顯 */
+  function crystalGeo(){
+    if(!geoCache.has("gem")){ const g=new T.OctahedronGeometry(.42,0); g.scale(1,1.8,1); geoCache.set("gem",g); }
+    return geoCache.get("gem");
   }
 
   function towerPos(e,i,n){
@@ -59,9 +55,9 @@ const Cosmos=(()=>{
     BANDS.forEach(b=>{
       const L=BAND_LISTS[b.key];
       L.forEach((e,i)=>{
-        const pivot=new T.Object3D(), size=1.1+e.radar[0]/100*2.2;
-        const mat=new T.MeshStandardMaterial({metalness:.25,roughness:.35,transparent:true});
-        const mesh=new T.Mesh(crystalGeo(e.radar),mat); mesh.scale.setScalar(size); mesh.userData.node=null;
+        const pivot=new T.Object3D(), size=.85+(e.radar[0]/100)**2*3.4;
+        const mat=new T.MeshStandardMaterial({metalness:.25,roughness:.3,transparent:true,flatShading:true});
+        const mesh=new T.Mesh(crystalGeo(),mat); mesh.scale.setScalar(size); mesh.userData.node=null;
         const glow=new T.Sprite(new T.SpriteMaterial({map:glowTex,transparent:true,blending:T.AdditiveBlending,depthWrite:false}));
         glow.scale.setScalar(size*2.2);
         pivot.add(glow,mesh); scene.add(pivot);
@@ -334,7 +330,7 @@ const Cosmos=(()=>{
     const r=correlation();
     $("#cz-r").textContent=r==null?"":`${AXES[axes[0]].label} ↔ ${AXES[axes[1]].label}  r = ${r.toFixed(2)}`;
     $("#cz-note").innerHTML=layout==="tower"
-      ?`塔身寬窄＝各環平均「影響半徑」。腰身最窄處是「念」:離中軸最近的,是被記得的人。<br>晶體＝六軸側影,大小＝本體權能${Models.count()?`;已 3D 化的 ${Models.count()} 位以雕像顯示`:""}。拖曳旋轉,滾輪縮放,點選打開圖鑑。`
+      ?`塔身寬窄＝各環平均「影響半徑」。腰身最窄處是「念」:離中軸最近的,是被記得的人。<br>晶體越大,實力越強(本體權能)${Models.count()?`;已 3D 化的 ${Models.count()} 位以雕像顯示`:""}。拖曳旋轉,滾輪縮放,點選打開圖鑑。`
       :`每粒晶體按所選三軸定位。r 為 X 與 Y 的相關係數:負數＝此消彼長,接近 0＝互不相干。${r!=null&&r<-.2?"這裡看得見反比。":"想找「權能與親密成反比」?試把 X 設為本體權能,Y 設為向人性或臨界性。"}`;
   }
 

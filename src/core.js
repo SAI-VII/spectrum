@@ -1,5 +1,6 @@
-/* 靈體圖鑑 · 本體光譜 — 核心:狀態、印記、法陣、圖鑑、抽屜
-   沿用原檔的函式與寫法;新增:傾斜印記、收藏／遇見標記、立體台、相似靈體、前後導航、AI 經 Claude 續寫。 */
+/* 靈體圖鑑 · 本體光譜 — 核心:狀態、圖鑑、抽屜
+   沿用原檔的函式與寫法;新增:實力環(取代六邊形印記)、實力卡與能力條(power.js)、收藏／遇見標記、
+   立體台、相似靈體、前後導航、AI 經 Claude 續寫。 */
 
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const cvar=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -32,16 +33,23 @@ const searchMatch=e=>!state.q||e.cn.toLowerCase().includes(state.q.toLowerCase()
 const favMatch=e=>!state.favOnly||Collection.isFav(e.rank);
 const visible=e=>regionMatch(e)&&searchMatch(e)&&favMatch(e);
 
-function glyphSVG(vals){
-  const cx=32,cy=32,R=22,n=6;
-  const pt=(i,r)=>{const a=-Math.PI/2+i*2*Math.PI/n;return [cx+r*Math.cos(a),cy+r*Math.sin(a)];};
-  const frame=Array.from({length:n},(_,i)=>pt(i,R).map(v=>v.toFixed(1)).join(",")).join(" ");
-  const sig=vals.map((v,i)=>pt(i,R*Math.max(v,4)/100).map(x=>x.toFixed(1)).join(",")).join(" ");
-  return `<polygon class="gframe" points="${frame}"/><polygon class="gsig" points="${sig}"/>`;
+/* 有 3D 縮圖時用縮圖(雕像),否則用實力環(power.js) */
+const icon=(e,sz,col)=>{ const t=Models.thumb(e.rank); return t?`<img class="thumb" src="${t}" width="${sz}" height="${sz}" alt="" loading="lazy" decoding="async">`:emblem(e,sz,col); };
+const glyph=(e,sz,col)=>emblem(e,sz,col);
+
+/* 一格靈體:實力環(大小與填滿都按本體權能)或雕像縮圖＋數值。圖鑑與實力階梯共用 */
+function makeCell(e,extra){
+  const p=e.radar[0], sz=Math.round(32+(p/100)**1.4*30), th=Models.thumb(e.rank);
+  const cell=document.createElement("button");
+  cell.className="cell"+(extra?" "+extra:"")+(e.flagship?" flag":"")+(th?" has-thumb":"");
+  cell.dataset.rank=e.rank;
+  cell.setAttribute("aria-label",`${e.cn}${e.en?" "+e.en:""},本體權能 ${p},${powerTier(p).cn}`);
+  cell.innerHTML=(th?`<span class="tw"><img class="thumb" src="${th}" width="${sz+22}" height="${sz+22}" alt="" loading="lazy" decoding="async"><span class="pv">${p}</span></span>`
+      :`<svg class="emblem" width="${sz}" height="${sz}" viewBox="0 0 64 64" aria-hidden="true">${emblemSVG(p)}</svg>`)+
+    `<span class="cap">${e.cn}${e.en?`<span class="en">${e.en}</span>`:""}</span><span class="mk" aria-hidden="true"></span>`;
+  cell.addEventListener("click",()=>openDetail(e.rank));
+  return cell;
 }
-const glyph=(e,sz,col)=>`<svg class="glyph" width="${sz}" height="${sz}" viewBox="0 0 64 64" aria-hidden="true" style="color:${col||bandColor(e)}">${glyphSVG(e.radar)}</svg>`;
-/* 有 3D 縮圖時用縮圖(雕像),否則用六軸印記 */
-const icon=(e,sz,col)=>{ const t=Models.thumb(e.rank); return t?`<img class="thumb" src="${t}" width="${sz}" height="${sz}" alt="" loading="lazy" decoding="async">`:glyph(e,sz,col); };
 
 function build(){
   const main=$("#spectrum");
@@ -61,28 +69,17 @@ function build(){
       `<span class="band-tier">${band.tier}</span><span class="band-count">${list.length} 位</span></div>`+
       `<p class="band-essence">${band.essence}</p><div class="plate"></div>`;
     const plate=sec.querySelector(".plate");
-    list.forEach(e=>{
-      const sz=Math.round(30+(e.radar[0]/100)*24), th=Models.thumb(e.rank);
-      const cell=document.createElement("button");
-      cell.className="cell"+(e.flagship?" flag":"")+(th?" has-thumb":"");
-      cell.dataset.rank=e.rank;
-      cell.setAttribute("aria-label",e.cn+(e.en?" "+e.en:""));
-      const sig=`<svg class="glyph" width="${th?18:sz}" height="${th?18:sz}" viewBox="0 0 64 64" aria-hidden="true">${glyphSVG(e.radar)}</svg>`;
-      cell.innerHTML=(th?`<span class="tw"><img class="thumb" src="${th}" width="${sz+22}" height="${sz+22}" alt="" loading="lazy" decoding="async">${sig}</span>`:sig)+
-        `<span class="cap">${e.cn}${e.en?`<span class="en">${e.en}</span>`:""}</span><span class="mk" aria-hidden="true"></span>`;
-      cell.addEventListener("click",()=>openDetail(e.rank));
-      plate.appendChild(cell);
-    });
+    list.forEach(e=>plate.appendChild(makeCell(e)));
     tiltPlate(plate);
     main.appendChild(sec);
   });
   paint();
   $("#legend").innerHTML=BANDS.map(b=>`<span><i style="background:${cvar(b.color)}"></i>${b.seal} ${b.cn} · ${b.en}</span>`).join("");
-  $("#colophon").innerHTML=`共 <b>${ENTITIES.length}</b> 位靈體,分作七環;其中 <b>${ENTITIES.filter(e=>e.flagship).length}</b> 位已立傳——以該環應有的語域精寫,並附豐富化的影響/職權與能力/手段,名字亮色顯示。每一位點開,都有<b>六軸逐條解讀</b>(數值＋一句詮釋＋量條)、一座<b>立體台</b>(3D 雕像;未 3D 化的顯示六軸晶體,或你放入的肖像經深度圖立體化)、<b>相似靈體</b>與<b>圖像與 3D 指令</b>(ChatGPT 與 Meshy);在 Claude 內開啟時,更可按 <b>「深掘立傳」</b>或<b>「向祂問一句」</b>,由 AI 以對應語域續寫。每枚印記:形狀＝六軸側影,大小＝本體權能,顏色隨「光照」而變;左上小點＝已遇見,★＝已收藏,「像」＝已立像;已 3D 化的靈體以雕像縮圖代替印記,印記縮在右下角。`;
+  $("#colophon").innerHTML=`共 <b>${ENTITIES.length}</b> 位靈體,分作七環,再按本體權能分成<b>七個實力等級</b>:由宇宙級到一人級,最底是你(權能 ${HUMAN.power})。每格的<b>圓環與數字</b>就是祂的實力,環越滿、格越大,力量越大;撥動「光照」,圓環改為顯示該項能力。點開任何一位,會先看到<b>實力卡</b>:等級、全圖排名、同你相差幾多級、職權、手段、管轄範圍與對你的態度;然後是<b>立體台</b>(3D 雕像或實力晶體,旁邊那個小人就是你)、<b>六項能力條</b>(附本環與全圖平均)、立傳、相似靈體與<b>圖像與 3D 指令</b>。其中 <b>${ENTITIES.filter(e=>e.flagship).length}</b> 位已立傳,名字亮色顯示;在 Claude 內開啟時,更可按<b>「深掘立傳」</b>或<b>「向祂問一句」</b>。左上小點=已遇見,★=已收藏,「像」=已立像。`;
   requestAnimationFrame(()=>$$(".band").forEach(s=>s.classList.add("in")));
 }
 
-/* 印記隨游標傾斜:一個 plate 只掛一組監聽 */
+/* 圖鑑格隨游標傾斜:一個 plate 只掛一組監聽 */
 function tiltPlate(plate){
   if(matchMedia("(prefers-reduced-motion: reduce)").matches||matchMedia("(hover: none)").matches) return;
   let cur=null;
@@ -104,7 +101,9 @@ function paint(){
   $$(".cell").forEach(c=>{
     const e=byRank(c.dataset.rank);
     c.style.color=entColor(e);
-    c.style.setProperty("--lk",state.lens==="band"?1:(.25+e.radar[lensIndex()]/100*.95).toFixed(2));
+    const li=state.lens==="band"?0:lensIndex(), v=e.radar[li];
+    c.style.setProperty("--lk",state.lens==="band"?1:(.25+v/100*.95).toFixed(2));
+    if(c.dataset.v!==String(v)){ c.dataset.v=v; setEmblem(c.querySelector(".emblem"),v); const pv=c.querySelector(".pv"); if(pv) pv.textContent=v; }
     c.classList.toggle("dim",!visible(e));
     c.classList.toggle("seen",Collection.isSeen(e.rank));
     const mk=c.querySelector(".mk"), fav=Collection.isFav(e.rank), img=Portraits.has(e.rank);
@@ -117,27 +116,6 @@ function paint(){
 function setLens(l){ state.lens=l; $$(".lens").forEach(b=>b.setAttribute("aria-pressed",b.dataset.lens===l));
   $("#hint").innerHTML=HINTS[l]; $("#hint").style.opacity=0; requestAnimationFrame(()=>$("#hint").style.opacity=1); paint(); }
 function setRegion(r){ state.region=r; $$(".reg").forEach(b=>b.setAttribute("aria-pressed",b.dataset.reg===r)); paint(); }
-
-function radarSVG(vals,color){ return radarMultiSVG([{vals,color}],true); }
-/* 多重法陣:比較與測驗共用。draw=true 時多邊形由中心展開 */
-function radarMultiSVG(sets,draw){
-  const cx=140,cy=140,R=100,n=6;
-  const pt=(i,r)=>{const ang=-Math.PI/2+i*2*Math.PI/n;return [cx+r*Math.cos(ang),cy+r*Math.sin(ang)];};
-  let s=`<svg class="radar${draw?" draw":""}" viewBox="-40 -4 360 288" role="img" aria-label="六軸法陣">`;
-  [25,50,75,100].forEach(p=>{
-    const poly=Array.from({length:n},(_,i)=>pt(i,R*p/100).map(v=>v.toFixed(1)).join(",")).join(" ");
-    s+=`<polygon class="ring" points="${poly}"/>`;});
-  for(let i=0;i<n;i++){const[x,y]=pt(i,R);s+=`<line class="spoke" x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}"/>`;}
-  sets.forEach(({vals,color,dash})=>{
-    const vpoly=vals.map((v,i)=>pt(i,R*v/100).map(x=>x.toFixed(1)).join(",")).join(" ");
-    s+=`<polygon class="poly" points="${vpoly}" fill="${color}" fill-opacity="${sets.length>1?0.12:0.2}" stroke="${color}" stroke-width="1.4"${dash?` stroke-dasharray="4 3"`:""}/>`;
-    vals.forEach((v,i)=>{const[x,y]=pt(i,R*v/100);s+=`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.6" fill="${color}"/>`;});
-  });
-  for(let i=0;i<n;i++){const[x,y]=pt(i,R+18);const c=Math.cos(-Math.PI/2+i*2*Math.PI/n);
-    const anc=c>0.3?"start":c<-0.3?"end":"middle";const dy=y<cy?-2:y>cy?12:4;
-    s+=`<text x="${x.toFixed(1)}" y="${(y+dy).toFixed(1)}" text-anchor="${anc}">${AXES[i].label}</text>`;}
-  s+=`</svg>`;return s;
-}
 
 /* 六軸距離:相似靈體與測驗共用。最大距離 = 100·√6 ≈ 245 */
 const radarDist=(a,b)=>Math.sqrt(a.reduce((s,v,i)=>s+(v-b[i])**2,0));
@@ -161,10 +139,7 @@ function openDetail(rank){
   const tierStyle=`background:${col}22;color:${col};border:1px solid ${col}55`;
   const meta=[["環",band.cn],["系統",e.system],["概念",e.concept],["段位",e.tier_label],["編號",e.rank]]
     .filter(m=>m[1]).map(m=>`<span>${m[0]} <b>${m[1]}</b></span>`).join("");
-  const axisRows=AXES.map((a,i)=>{const v=e.radar[i];return `<div class="axrow"><span class="axname">${a.label}</span><span class="axbar"><span class="axfill" style="width:${v}%;background:${col}"></span></span><span class="axval">${v}</span><span class="axread">${axisRead(i,v)}</span></div>`;}).join("");
   const untold=e.flagship?"":`<span class="untold">待立傳</span>`;
-  const facts=[["對人的影響／職權",e.influence],["能力與手段",e.means]]
-    .filter(f=>f[1]&&f[1]!=="—").map(f=>`<div><b>${f[0]}</b><br>${f[1]}</div>`).join("");
   const sims=similar(e).map(([x,d])=>`<button class="sim-item" data-rank="${x.rank}">${icon(x,30)}<span><span class="n">${x.cn}</span><span class="p">${bandOf(x).seal} · 相近 ${likeness(d)}%</span></span></button>`).join("");
   const [prev,next]=neighbours(e);
 
@@ -173,9 +148,10 @@ function openDetail(rank){
     `<span class="dr-tier" style="${tierStyle}">${e.tier_label||e.tier}</span>`+
     `<h2 class="dr-cn">${e.cn}</h2>`+(e.en?`<p class="dr-en">${e.en}</p>`:"")+
     `<div class="dr-meta">${meta}</div>`+
+    powerCard(e,col)+
     `<div class="stage" id="stage" style="--sc:${col}">`+
       `<div class="stage-gl"></div>`+
-      `<span class="stage-mode" id="stage-mode">六軸晶體</span><p class="stage-err" id="stage-err" role="alert" hidden></p><div class="stage-ui">`+
+      `<span class="stage-mode" id="stage-mode">實力晶體</span><p class="stage-err" id="stage-err" role="alert" hidden></p><div class="stage-ui">`+
         `<label class="sbtn">放入肖像<input type="file" accept="image/*" id="pf-img"></label>`+
         `<label class="sbtn">深度圖<input type="file" accept="image/*" id="pf-depth"></label>`+
         `<label class="sbtn">GLB 模型<input type="file" id="pf-model"></label>`+
@@ -190,11 +166,9 @@ function openDetail(rank){
       `<button class="act" id="a-prompt" aria-pressed="false">圖像與 3D 指令</button>`+
       `<button class="act" id="a-share">分享卡</button>`+
     `</div><div id="pp-slot"></div>`+
-    `<div class="radar-wrap">${radarSVG(e.radar,col)}</div>`+
-    `<div class="axis-block">${axisRows}</div>`+
+    statBars(e,col)+
     `<div class="voice-tag"><span>語域 · ${VOICE_NAME[voice]||""}</span>${untold}</div>`+
     `<div class="desc v-${voice}">${e.desc||e.brief||""}</div>`+
-    (facts?`<div class="facts">${facts}</div>`:"")+
     (e.source&&e.source!=="—"?`<p class="source">來源 · ${e.source}</p>`:"")+
     `<div class="sim"><p class="sec-h">六軸最相近的靈體</p><div class="sim-list">${sims}</div></div>`+
     `<div class="deepen-wrap" id="ai-slot"></div>`+
@@ -202,7 +176,7 @@ function openDetail(rank){
 
   const body=$("#dr-body");
   body.querySelector(".dr-close").addEventListener("click",closeDetail);
-  body.querySelectorAll(".sim-item,.dr-nav button").forEach(b=>b.addEventListener("click",()=>openDetail(+b.dataset.rank)));
+  body.querySelectorAll(".sim-item,.dr-nav button,.pw-nav button").forEach(b=>b.addEventListener("click",()=>openDetail(+b.dataset.rank)));
   $("#a-fav").addEventListener("click",ev=>{ const on=Collection.toggleFav(e.rank); ev.currentTarget.setAttribute("aria-pressed",on); ev.currentTarget.textContent=on?"★ 已收藏":"☆ 收藏"; paint(); });
   $("#a-cmp").addEventListener("click",ev=>{ const on=Compare.toggle(e.rank); ev.currentTarget.setAttribute("aria-pressed",on); ev.currentTarget.textContent=on?"已加入比較":"加入比較"; });
   $("#a-prompt").addEventListener("click",ev=>PromptPanel.toggle(e,ev.currentTarget));
@@ -211,7 +185,7 @@ function openDetail(rank){
 
   const dr=$("#drawer"); dr.classList.add("open"); dr.setAttribute("aria-hidden","false");
   $("#scrim").classList.add("open"); dr.scrollTop=0; dr.focus({preventScroll:true});
-  const r=dr.querySelector(".radar"); if(r)requestAnimationFrame(()=>r.classList.remove("draw"));
+  const st=dr.querySelector(".st"); if(st){ st.classList.add("pre"); requestAnimationFrame(()=>requestAnimationFrame(()=>st.classList.remove("pre"))); }
   StageUI.mount($("#stage"),e,col);
   Sound.enter(e.band,e.radar[0]);
   if(state.view==="cosmos") Cosmos.focus(e.rank);
@@ -221,7 +195,7 @@ function openDetail(rank){
 function closeDetail(){
   if(!$("#drawer").classList.contains("open")) return;
   $("#drawer").classList.remove("open"); $("#drawer").setAttribute("aria-hidden","true"); $("#scrim").classList.remove("open");
-  state.current=null; Stage3D.stop(); AI.abort(); Hash.set(state.view==="cosmos"?"cosmos":"");
+  state.current=null; Stage3D.stop(); AI.abort(); Hash.set(state.view==="codex"?"":state.view);
 }
 
 /* ───── AI:經 Claude 的 sample 能力續寫(只在 Claude 內開啟時可用) ───── */

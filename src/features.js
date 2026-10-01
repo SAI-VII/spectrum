@@ -208,10 +208,12 @@ const Compare=(()=>{
     const inverse=strong!==weak&&strong.radar[2]<weak.radar[2];
     Modal.open(
       `<p class="md-eyebrow">對照 · Side by side</p><h2 class="md-h" id="md-title">${es.map(e=>e.cn).join(" ／ ")}</h2>`+
-      `<div class="cmp-wrap"><div>${radarMultiSVG(es.map((e,i)=>({vals:e.radar,color:COLORS[i]})))}</div>`+
-      `<div class="cmp-scroll"><table class="cmp-table"><thead><tr><th>軸</th>${es.map((e,i)=>`<th><span style="color:${COLORS[i]}">●</span> ${e.cn}</th>`).join("")}</tr></thead>`+
-      `<tbody>${rows.map(r=>`<tr><td>${r.label}</td>${r.cells}</tr>`).join("")}</tbody></table></div></div>`+
-      `<p class="cmp-read">差距最大在<b>「${widest.label}」</b>:${hiE.cn} ${Math.max(...widest.vs)},${loE.cn} ${Math.min(...widest.vs)}——${axisRead(widest.i,Math.max(...widest.vs))},對上${axisRead(widest.i,Math.min(...widest.vs))}。`+
+      `<div class="cmp-tiers">${es.map((e,i)=>{ const t=powerTier(e.radar[0]); return `<div style="--bc:${COLORS[i]}"><b>${e.cn}</b><span>${t.cn} · 第 ${powerRankOf(e)} 強</span><small>${t.gap}</small></div>`; }).join("")}</div>`+
+      powerRuler([{v:HUMAN.power,label:"你",you:true},...es.map((e,i)=>({v:e.radar[0],label:e.cn.replace(/（.*?）/g,""),color:COLORS[i]}))],COLORS[0])+
+      compareBars(es.map((e,i)=>({label:e.cn.replace(/（.*?）/g,""),vals:e.radar,color:COLORS[i]})))+
+      `<p class="cmp-read">${(()=>{ const ts=powerTier(strong.radar[0]), tw=powerTier(weak.radar[0]), d=tierNo(tw)-tierNo(ts);
+        return d>0?`實力上,<b>${strong.cn}</b>(${ts.cn})比<b>${weak.cn}</b>(${tw.cn})高 ${d} 級:${ts.gap}。`:`實力上,${es.map(e=>e.cn).join("、")}同屬<b>${ts.cn}</b>,差距只在細節。`; })()}`+
+      `差距最大的一項是<b>「${widest.label}」</b>:${hiE.cn} ${Math.max(...widest.vs)},${loE.cn} ${Math.min(...widest.vs)}——${axisRead(widest.i,Math.max(...widest.vs))},對上${axisRead(widest.i,Math.min(...widest.vs))}。`+
       (inverse?`權能較高的<b>${strong.cn}</b>,向人性反而低過<b>${weak.cn}</b>:正是這部圖鑑講的那條反比。`:`今次權能較高的<b>${strong.cn}</b>,向人性亦不低於<b>${weak.cn}</b>——反比並非鐵律。`)+`</p>`+
       `<div class="md-foot">${es.map(e=>`<button class="btn" data-rank="${e.rank}">打開 ${e.cn}</button>`).join("")}<button class="btn" id="cmp-clear">清空比較</button></div>`,
       {wide:true});
@@ -256,58 +258,70 @@ const ShareCard={
     if(out.length===maxLines&&(out.join("").length<text.length)){ let l=out[maxLines-1]; while(l&&g.measureText(l+"⋯").width>maxW) l=l.slice(0,-1); out[maxLines-1]=l+"⋯"; }
     return out.slice(0,maxLines);
   },
-  radar(g,vals,cx,cy,R,col){
-    const pt=(i,r)=>{ const a=-Math.PI/2+i*Math.PI/3; return [cx+r*Math.cos(a),cy+r*Math.sin(a)]; };
-    g.strokeStyle="rgba(236,230,217,.14)"; g.lineWidth=1.5;
-    [.25,.5,.75,1].forEach(p=>{ g.beginPath(); for(let i=0;i<6;i++){ const [x,y]=pt(i,R*p); i?g.lineTo(x,y):g.moveTo(x,y); } g.closePath(); g.stroke(); });
-    for(let i=0;i<6;i++){ const [x,y]=pt(i,R); g.beginPath(); g.moveTo(cx,cy); g.lineTo(x,y); g.stroke(); }
-    g.beginPath(); vals.forEach((v,i)=>{ const [x,y]=pt(i,R*Math.max(v,4)/100); i?g.lineTo(x,y):g.moveTo(x,y); }); g.closePath();
-    g.fillStyle=rgba(col,.28); g.shadowColor=col; g.shadowBlur=R*.25; g.fill(); g.shadowBlur=0;
-    g.strokeStyle=col; g.lineWidth=R/60; g.lineJoin="round"; g.stroke();
+  /* 實力環(畫布版):圓環填滿 = 本體權能,中間大字 */
+  ring(g,v,cx,cy,R,col){
+    g.lineCap="round";
+    g.beginPath(); g.arc(cx,cy,R,0,Math.PI*2); g.strokeStyle="rgba(236,230,217,.12)"; g.lineWidth=R*.13; g.stroke();
+    g.beginPath(); g.arc(cx,cy,R,-Math.PI/2,-Math.PI/2+Math.PI*2*v/100); g.strokeStyle=col; g.shadowColor=col; g.shadowBlur=R*.3; g.stroke(); g.shadowBlur=0;
+    g.fillStyle="#ECE6D9"; g.textAlign="center"; g.textBaseline="middle"; g.font=`500 ${Math.round(R*.78)}px ${cvar("--display")}`;
+    g.fillText(String(v),cx,cy+R*.04); g.textBaseline="alphabetic";
   },
   async render(e,{noImg=false}={}){
     try{ await document.fonts?.ready; }catch{}
     const W=1080,H=1350, c=document.createElement("canvas"); c.width=W; c.height=H;
-    const g=c.getContext("2d"), band=bandOf(e), col=cvar(band.color);
+    const g=c.getContext("2d"), band=bandOf(e), col=cvar(band.color), t=powerTier(e.radar[0]);
     const serif=cvar("--serif"), display=cvar("--display"), sans=cvar("--sans"), mono=cvar("--mono");
     g.fillStyle="#0E1015"; g.fillRect(0,0,W,H);
-    const rg=g.createRadialGradient(W/2,400,30,W/2,400,820); rg.addColorStop(0,rgba(col,.2)); rg.addColorStop(1,"rgba(14,16,21,0)");
+    const rg=g.createRadialGradient(W/2,380,30,W/2,380,820); rg.addColorStop(0,rgba(col,.2)); rg.addColorStop(1,"rgba(14,16,21,0)");
     g.fillStyle=rg; g.fillRect(0,0,W,H);
     g.textBaseline="alphabetic";
     g.font=`400 520px ${serif}`; g.fillStyle=rgba(col,.05); g.textAlign="right"; g.fillText(band.seal,W-50,1240);
-    g.textAlign="center"; g.fillStyle="#9B968A"; g.font=`italic 400 34px ${display}`; g.fillText("靈體圖鑑 · An Ontological Spectrum",W/2,92);
+    g.textAlign="center"; g.fillStyle="#9B968A"; g.font=`italic 400 34px ${display}`; g.fillText("靈體圖鑑 · An Ontological Spectrum",W/2,84);
 
     let img=null, statue=null; const a=noImg?null:await Portraits.get(e.rank);
     if(a?.img){ try{ img=await loadImage(a.img); }catch{ img=null; } }
     if(!img&&!noImg&&Models.thumb(e.rank)){ try{ statue=await loadImage(Models.thumb(e.rank)); }catch{ statue=null; } }
     if(statue){
-      const sz=560, s=Math.min(sz/statue.naturalWidth,sz/statue.naturalHeight), w=statue.naturalWidth*s, h=statue.naturalHeight*s;
-      g.drawImage(statue,W/2-w/2,700-h,w,h);
-      g.beginPath(); g.arc(W-190,600,96,0,Math.PI*2); g.fillStyle="rgba(14,16,21,.72)"; g.fill();
-      this.radar(g,e.radar,W-190,600,74,col);
+      const sz=520, s=Math.min(sz/statue.naturalWidth,sz/statue.naturalHeight), w=statue.naturalWidth*s, h=statue.naturalHeight*s;
+      g.drawImage(statue,W/2-w/2-60,640-h,w,h);
+      g.beginPath(); g.arc(W-200,520,100,0,Math.PI*2); g.fillStyle="rgba(14,16,21,.72)"; g.fill();
+      this.ring(g,e.radar[0],W-200,520,76,col);
     }else if(img){
-      const bx=110,by=130,bw=860,bh=570, s=Math.max(bw/img.naturalWidth,bh/img.naturalHeight);
+      const bx=110,by=118,bw=860,bh=540, s=Math.max(bw/img.naturalWidth,bh/img.naturalHeight);
       g.save(); g.beginPath(); g.roundRect(bx,by,bw,bh,28); g.clip();
       g.drawImage(img,bx+(bw-img.naturalWidth*s)/2,by+(bh-img.naturalHeight*s)/2,img.naturalWidth*s,img.naturalHeight*s);
       const vg=g.createLinearGradient(0,by+bh*.55,0,by+bh); vg.addColorStop(0,"rgba(14,16,21,0)"); vg.addColorStop(1,"rgba(14,16,21,.85)");
       g.fillStyle=vg; g.fillRect(bx,by,bw,bh); g.restore();
-      g.beginPath(); g.arc(bx+bw-110,by+bh-110,96,0,Math.PI*2); g.fillStyle="rgba(14,16,21,.72)"; g.fill();
-      this.radar(g,e.radar,bx+bw-110,by+bh-110,74,col);
-    }else this.radar(g,e.radar,W/2,420,250,col);
+      g.beginPath(); g.arc(bx+bw-110,by+bh-110,100,0,Math.PI*2); g.fillStyle="rgba(14,16,21,.72)"; g.fill();
+      this.ring(g,e.radar[0],bx+bw-110,by+bh-110,76,col);
+    }else this.ring(g,e.radar[0],W/2,390,210,col);
 
-    const tier=e.tier_label||e.tier; g.font=`500 28px ${mono}`;
-    const tw=g.measureText(tier).width+40; g.fillStyle=rgba(col,.14); g.strokeStyle=rgba(col,.5); g.lineWidth=2;
-    g.beginPath(); g.roundRect(W/2-tw/2,742,tw,48,8); g.fill(); g.stroke();
-    g.fillStyle=col; g.fillText(tier,W/2,776);
-    g.fillStyle="#ECE6D9"; g.font=`400 88px ${serif}`;
+    /* 等級徽章 */
+    const tier=`${t.cn} · 第 ${powerRankOf(e)} 強 / ${ENTITIES.length}`; g.font=`500 30px ${sans}`; g.textAlign="center";
+    const tw=g.measureText(tier).width+48; g.fillStyle=rgba(col,.16); g.strokeStyle=rgba(col,.55); g.lineWidth=2;
+    g.beginPath(); g.roundRect(W/2-tw/2,690,tw,54,10); g.fill(); g.stroke();
+    g.fillStyle=col; g.fillText(tier,W/2,728);
+    g.fillStyle="#ECE6D9"; g.font=`400 84px ${serif}`;
     let name=e.cn; while(g.measureText(name).width>W-140&&name.length>2) name=name.slice(0,-1);
-    g.fillText(name,W/2,890);
-    if(e.en){ g.fillStyle="#9B968A"; g.font=`italic 400 44px ${display}`; g.fillText(e.en,W/2,948); }
-    g.fillStyle="#6C675D"; g.font=`400 28px ${sans}`; g.fillText(`${band.seal} ${band.cn} · ${band.en}${e.system?" · "+e.system:""}`,W/2,1000);
-    g.fillStyle="#D9D2C3"; g.font=`400 34px ${serif}`; g.textAlign="left";
-    this.wrap(g,e.desc||e.influence||e.brief||"",W-220,4).forEach((l,i)=>g.fillText(l,110,1070+i*56));
-    g.textAlign="center"; g.fillStyle="#6C675D"; g.font=`400 24px ${mono}`;
-    [[0,3],[3,6]].forEach(([a,b],row)=>g.fillText(AXES.slice(a,b).map((ax,i)=>`${ax.label} ${e.radar[a+i]}`).join("   ·   "),W/2,1284+row*36));
+    g.fillText(name,W/2,836);
+    if(e.en){ g.fillStyle="#9B968A"; g.font=`italic 400 42px ${display}`; g.fillText(e.en,W/2,890); }
+    g.fillStyle="#D9D2C3"; g.font=`italic 400 34px ${serif}`;
+    this.wrap(g,`「${t.gap}」`,W-200,1).forEach(l=>g.fillText(l,W/2,950));
+    g.fillStyle="#8E897E"; g.font=`400 28px ${sans}`;
+    this.wrap(g,`職權 · ${e.influence||e.concept||""}`,W-200,1).forEach(l=>g.fillText(l,W/2,1000));
+
+    /* 六項能力條:兩欄三行 */
+    const x0=[110,570], bw=400, y0=1062;
+    AXES.forEach((ax,i)=>{
+      const x=x0[i%2], y=y0+Math.floor(i/2)*78, v=e.radar[i];
+      g.textAlign="left"; g.fillStyle="#D9D2C3"; g.font=`400 26px ${sans}`; g.fillText(ax.label,x,y);
+      g.textAlign="right"; g.fillStyle=col; g.font=`500 28px ${mono}`; g.fillText(String(v),x+bw,y);
+      g.fillStyle="rgba(236,230,217,.1)"; g.beginPath(); g.roundRect(x,y+14,bw,10,5); g.fill();
+      g.fillStyle=col; g.beginPath(); g.roundRect(x,y+14,Math.max(10,bw*v/100),10,5); g.fill();
+      if(i<2){ const hx=x+bw*(i?HUMAN.scope:HUMAN.power)/100; g.fillStyle="#ECE6D9"; g.beginPath(); g.arc(hx,y+19,6,0,Math.PI*2); g.fill(); }
+    });
+    g.textAlign="center"; g.fillStyle="#6C675D"; g.font=`400 24px ${sans}`;
+    g.fillText(`${band.seal} ${band.cn}${e.system?" · "+e.system:""} · 白點 = 你(權能 ${HUMAN.power})`,W/2,1318);
     return new Promise(res=>c.toBlob(b=>res(b),"image/png"));
   },
   async open(e){
@@ -350,11 +364,11 @@ const Quiz={
     const [best,d]=ranked[0], band=bandOf(best), col=cvar(band.color);
     Store.set("quiz",best.rank);
     Modal.open(`<p class="md-eyebrow">你的本命靈</p><h2 class="md-h" id="md-title" hidden>${best.cn}</h2>`+
-      `<div class="qz-res"><div>${radarMultiSVG([{vals:me,color:"#ECE6D9",dash:true},{vals:best.radar,color:col}])}`+
-      `<div class="qz-legend"><span><i style="background:#ECE6D9"></i>你</span><span><i style="background:${col}"></i>${best.cn}</span></div></div>`+
+      `<div class="qz-res"><div>${compareBars([{label:"你",vals:me,color:"#ECE6D9",dash:true},{label:best.cn.replace(/（.*?）/g,""),vals:best.radar,color:col}])}</div>`+
       `<div><span class="pct">六軸契合 ${likeness(d)}% · ${band.seal} ${band.cn}</span><div class="who" style="color:${col}">${best.cn}</div>`+
       (best.en?`<div class="en">${best.en}</div>`:"")+
       `<p class="qz-read">${firstSentence(best.desc||best.influence,90)}</p>`+
+      `<p class="qz-read">實力:<b>${powerTier(best.radar[0]).cn}</b>(本體權能 ${best.radar[0]})。你的答案像祂,但真身的祂${powerTier(best.radar[0]).gap}。</p>`+
       `<p class="qz-read">次近:${ranked.slice(1,3).map(([x,dd])=>`${x.cn}(${likeness(dd)}%)`).join("、")}</p></div></div>`+
       `<div class="md-foot"><button class="btn gold" id="qz-open">打開 ${best.cn} 的圖鑑</button><button class="btn" id="qz-again">再測一次</button></div>`,{wide:true});
     $("#qz-open").addEventListener("click",()=>{ Modal.close(); openDetail(best.rank); });
@@ -377,7 +391,7 @@ const Omen={
     Modal.open(`<p class="md-eyebrow">${pick.label}</p><h2 class="md-h" id="md-title">撳一下,翻開今日遇見的靈</h2>`+
       `<div class="omen"><div class="omen-card" id="omen-card" role="button" tabindex="0" aria-label="翻牌" style="--oc:${col}">`+
         `<div class="omen-face omen-back"><b>籤</b><span>An Ontological Spectrum</span></div>`+
-        `<div class="omen-face omen-front">${Models.thumb(e.rank)?`<img class="om-thumb" src="${Models.thumb(e.rank)}" alt="">`:glyph(e,92,col)}<span class="om-band">${band.seal} ${band.cn} · ${e.tier_label||e.tier}</span>`+
+        `<div class="omen-face omen-front">${Models.thumb(e.rank)?`<img class="om-thumb" src="${Models.thumb(e.rank)}" alt="">`:emblem(e,92,col)}<span class="om-band">${band.seal} ${band.cn} · ${powerTier(e.radar[0]).cn}</span>`+
           `<span class="who">${e.cn}</span>${e.en?`<span class="en">${e.en}</span>`:""}`+
           `<div class="omen-yiji"><div><b>宜</b>${AXIS_OMEN[hi].yi}</div><div><b>忌</b>${AXIS_OMEN[lo].ji}</div></div></div>`+
       `</div></div><p class="omen-line" id="omen-line" hidden>${firstSentence(e.desc||e.influence||e.brief,80)}</p>`+

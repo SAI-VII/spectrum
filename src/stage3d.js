@@ -4,7 +4,7 @@
                     所屬環色調的攝影棚環境光、暖白主光＋環色輪廓光、接觸陰影、光環地台、可拖曳縮放
    2. 肖像＋深度 —— ChatGPT 生成的圖像,以深度圖把平面推成浮雕,游標移動即見視差
                     沒有深度圖時,以亮度＋中心權重自動估算(近似,暗底圖版效果最好)
-   3. 六軸晶體   —— 無素材時的預設:把雷達多邊形擠出成晶體,形狀即身份 */
+   3. 實力晶體   —— 無素材時的預設:一枚晶體,旁邊一個按等級縮小的凡人,實力差距一眼看到 */
 
 const loadThree=(()=>{ let p=null; return ()=>p||(p=import("three").catch(err=>{p=null;throw err;})); })();
 
@@ -215,24 +215,46 @@ const Stage3D=(()=>{
     return [sp,tex];
   }
 
+  /* 凡人比例人形:高度 = 主體高度 ÷ 等級比例(宇宙級 13、一人級 1),旁邊浮一個「你」字 */
+  function humanFigure(h){
+    const g=new T.Group(), m=new T.MeshStandardMaterial({color:0xECE6D9,emissive:0xF2BD5C,emissiveIntensity:.3,roughness:.6,transparent:true,opacity:h>1?.6:.95});
+    const legs=new T.Mesh(new T.CapsuleGeometry(h*.075,h*.36,4,12),m); legs.position.y=h*.255;
+    const torso=new T.Mesh(new T.CapsuleGeometry(h*.1,h*.2,4,12),m); torso.position.y=h*.6;
+    const head=new T.Mesh(new T.SphereGeometry(h*.075,16,12),m); head.position.y=h*.9;
+    const c=document.createElement("canvas"); c.width=128; c.height=64; const x=c.getContext("2d");
+    x.font="600 44px 'Noto Serif TC',serif"; x.textAlign="center"; x.textBaseline="middle"; x.fillStyle="#ECE6D9";
+    x.shadowColor="#F2BD5C"; x.shadowBlur=12; x.fillText("你",64,34);
+    const tex=new T.CanvasTexture(c); tex.colorSpace=T.SRGBColorSpace;
+    const tag=new T.Sprite(new T.SpriteMaterial({map:tex,transparent:true,depthWrite:false}));
+    const ts=Math.min(.3,Math.max(.2,h*.2)); tag.scale.set(ts*2,ts,1);
+    if(h<1.2) tag.position.y=h+ts*.55; else tag.position.set(h*.12+ts*.8,h*.62,0);
+    g.add(legs,torso,head,tag); g.userData.tex=[tex];
+    return g;
+  }
+  const tierVis=e=>powerTier(e.radar[0]).vis;
+
+  /* 實力晶體:未有模型或肖像時顯示。晶體高度固定,旁邊的凡人按等級縮小——差距一眼看到 */
   function buildCrystal(e,col){
-    const g=new T.Group(), c=new T.Color(col), R=1.05;
+    const g=new T.Group(), c=new T.Color(col), H=2.0, base=-1.05;
     g.userData.kind="crystal";
-    const ang=i=>Math.PI/2-i*Math.PI/3;  // 與 2D 法陣同向:第一軸在正上,順時針
-    const pts=e.radar.map((v,i)=>new T.Vector2(Math.cos(ang(i))*R*Math.max(v,6)/100,Math.sin(ang(i))*R*Math.max(v,6)/100));
-    const geo=new T.ExtrudeGeometry(new T.Shape(pts),{depth:.22,bevelEnabled:true,bevelThickness:.06,bevelSize:.05,bevelSegments:4});
-    geo.center();
-    const mesh=new T.Mesh(geo,new T.MeshPhysicalMaterial({color:c,emissive:c,emissiveIntensity:.1,metalness:.1,roughness:.3,
-      clearcoat:.6,clearcoatRoughness:.15,transparent:true,opacity:.9}));
-    mesh.add(new T.LineSegments(new T.EdgesGeometry(geo,25),new T.LineBasicMaterial({color:c.clone().lerp(new T.Color(0xffffff),.4),transparent:true,opacity:.85})));
-    const frame=[]; for(let i=0;i<=6;i++) frame.push(new T.Vector3(Math.cos(ang(i))*R,Math.sin(ang(i))*R,0));
-    const half=frame.map(v=>v.clone().multiplyScalar(.5));
-    const lm=new T.LineBasicMaterial({color:0xECE6D9,transparent:true,opacity:.16});
-    const spokes=[]; for(let i=0;i<6;i++) spokes.push(new T.Vector3(),frame[i]);
-    g.add(new T.Line(new T.BufferGeometry().setFromPoints(frame),lm),
-          new T.Line(new T.BufferGeometry().setFromPoints(half),lm),
-          new T.LineSegments(new T.BufferGeometry().setFromPoints(spokes),lm),mesh);
-    const [sp,tex]=glowSprite(c,3.4); g.add(sp); g.userData.tex=[tex];
+    const geo=new T.OctahedronGeometry(.5,0); geo.scale(1,2,1);
+    const mesh=new T.Mesh(geo,new T.MeshPhysicalMaterial({color:c,emissive:c,emissiveIntensity:.18+e.radar[0]/100*.4,metalness:.1,roughness:.22,
+      clearcoat:.8,clearcoatRoughness:.1,transparent:true,opacity:.92,flatShading:true}));
+    mesh.position.y=base+H/2+.04;
+    mesh.add(new T.LineSegments(new T.EdgesGeometry(geo),new T.LineBasicMaterial({color:c.clone().lerp(new T.Color(0xffffff),.45),transparent:true,opacity:.8})));
+    const spin=new T.Group(); spin.add(mesh); g.add(spin); g.userData.spin=spin;
+    /* 地台:一圈環色光 ＋ 七級刻度,目前一級最亮 */
+    const ring=new T.Mesh(new T.RingGeometry(.78,.8,96),new T.MeshBasicMaterial({color:c,transparent:true,opacity:.5,side:T.DoubleSide,depthWrite:false}));
+    ring.rotation.x=-Math.PI/2; ring.position.y=base;
+    const arc=new T.Mesh(new T.RingGeometry(.84,.9,96,1,Math.PI/2,-Math.PI*2*e.radar[0]/100),new T.MeshBasicMaterial({color:c,transparent:true,opacity:.95,side:T.DoubleSide,depthWrite:false}));
+    arc.rotation.x=-Math.PI/2; arc.position.y=base+.001;
+    const gtex=new T.CanvasTexture(glowCanvas());
+    const halo=new T.Mesh(new T.PlaneGeometry(1,1),new T.MeshBasicMaterial({map:gtex,color:c,transparent:true,opacity:.4,blending:T.AdditiveBlending,depthWrite:false}));
+    halo.rotation.x=-Math.PI/2; halo.scale.setScalar(2.6); halo.position.y=base+.002;
+    const man=humanFigure(H/tierVis(e)); man.position.set(1.1,base,.35);
+    g.add(ring,arc,halo,man);
+    const [sp,tex]=glowSprite(c,3.2+e.radar[0]/100*1.6); sp.position.y=base+H/2; g.add(sp);
+    g.userData.tex=[tex,gtex,...man.userData.tex];
     lights(g,c);
     return g;
   }
@@ -264,7 +286,7 @@ const Stage3D=(()=>{
   }
 
   /* 展示櫃:模型高度統一為 2.1,腳底落在地台上;環色光環地台 ＋ 接觸陰影 ＋ 暖白主光與環色輪廓光 */
-  async function buildModel(src,col){
+  async function buildModel(src,col,e){
     const gltf=await loadGLTF(src);
     const root=gltf.scene, c=new T.Color(col);
     GLB.capTextures(root,Math.min(renderer.capabilities.maxTextureSize,matchMedia("(max-width:720px)").matches?2048:4096));
@@ -285,8 +307,9 @@ const Stage3D=(()=>{
     const key=new T.DirectionalLight(0xfff4e6,1.8); key.position.set(-2.2,3.2,3.4);
     const rim=new T.DirectionalLight(c,3.2); rim.position.set(2.8,1.8,-3.2);
     const rim2=new T.DirectionalLight(c,1.6); rim2.position.set(-2.8,.8,-2.6);
-    g.add(shadow,ring,halo,key,rim,rim2,new T.AmbientLight(0xffffff,.12));
-    g.userData.tex=[stex,gtex];
+    const mh=Math.min(2.1,size.y*s)/tierVis(e), man=humanFigure(mh); man.position.set(foot*.62+.12+mh*.08,-1.05,foot*.1);
+    g.add(shadow,ring,halo,key,rim,rim2,man,new T.AmbientLight(0xffffff,.12));
+    g.userData.tex=[stex,gtex,...man.userData.tex];
     if(gltf.animations?.length){ g.userData.clips=gltf.animations; }
     return g;
   }
@@ -294,19 +317,19 @@ const Stage3D=(()=>{
   async function show(el,e,col,assets,prefer){
     const my=++token;
     try{ if(!T) await init(); }
-    catch(err){ console.warn("立體台未能載入 three.js",err); return {ok:false,label:"六軸側影 · 此環境未能載入 3D"}; }
+    catch(err){ console.warn("立體台未能載入 three.js",err); return {ok:false,label:"實力環 · 此環境未能載入 3D"}; }
     if(my!==token) return {ok:true,label:""};
     host=el; host.appendChild(renderer.domElement); ro.disconnect(); ro.observe(host); resize();
     drag.x=drag.y=0;
-    let next=null, label="六軸晶體 · 拖曳旋轉", error=null;
+    let next=null, label="實力晶體 · 旁邊那個小人就是你", error=null;
     const wantModel=(assets?.model||assets?.modelBlob)&&!(prefer==="portrait"&&assets?.img);
     try{
-      if(wantModel){ next=await buildModel(assets.modelBlob||assets.model,col); label=`3D 模型${assets.source?` · ${assets.source}`:""} · 拖曳旋轉、滾輪縮放`; }
+      if(wantModel){ next=await buildModel(assets.modelBlob||assets.model,col,e); label=`3D 模型${assets.source?` · ${assets.source}`:""} · 旁邊那個小人就是你`; }
       else if(assets?.img){ const r=await buildPortrait(assets.img,assets.depth,col); next=r.obj; label=r.depth?"肖像 · 深度圖立體化":"肖像 · 自動估算深度(近似)"; }
     }catch(err){
       console.warn("素材載入失敗",err); next=null;
       error=err instanceof ModelError?err.message:wantModel?`GLB 載入失敗:${err?.message||err}`:`圖像載入失敗:${err?.message||err}`;
-      label=wantModel?"GLB 未能載入 · 暫顯六軸晶體":"圖像未能載入 · 暫顯六軸晶體";
+      label=wantModel?"GLB 未能載入 · 暫顯實力晶體":"圖像未能載入 · 暫顯實力晶體";
     }
     if(my!==token){ dispose(next); return {ok:true,label:""}; }
     if(!next) next=buildCrystal(e,col);
@@ -342,9 +365,8 @@ const Stage3D=(()=>{
       mixer?.update(dt);
       controls.update();
     }else if(obj){
-      camera.position.set(0,0,4.2); camera.lookAt(0,0,0);
-      obj.rotation.y=drag.y+Math.sin(t*.6)*.7*sway+pointer.x*.35;
-      obj.rotation.x=drag.x-pointer.y*.25;
+      camera.position.set(Math.sin(drag.y*.5+pointer.x*.2)*4.7,.3-pointer.y*.2+drag.x*.6,Math.cos(drag.y*.5+pointer.x*.2)*4.7); camera.lookAt(.2,-.32,0);
+      if(obj.userData.spin) obj.userData.spin.rotation.y=t*.45*sway+drag.y;
     }
     renderer.render(scene,camera);
   }

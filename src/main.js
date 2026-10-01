@@ -6,21 +6,23 @@ function measureControls(){
 
 function setView(v){
   state.view=v;
-  const cz=v==="cosmos";
+  const cz=v==="cosmos", ld=v==="ladder";
   $$(".viewsw [data-view]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.view===v));
-  $("#codex").hidden=cz; $("#foot").hidden=cz; $("#cosmos").hidden=!cz;
+  $("#codex").hidden=v!=="codex"; $("#ladder").hidden=!ld; $("#foot").hidden=cz; $("#cosmos").hidden=!cz;
   document.body.classList.toggle("view-cosmos",cz);
   measureControls();
-  if(cz){
-    const y=$("#cosmos").getBoundingClientRect().top+scrollY-$("#controls").offsetHeight;
+  if(ld) Ladder.build();
+  if(cz||ld){
+    const y=$(cz?"#cosmos":"#ladder").getBoundingClientRect().top+scrollY-$("#controls").offsetHeight;
     scrollTo({top:Math.max(0,y),behavior:"instant"});
-    Cosmos.start($("#cosmos"));
-  }else Cosmos.stop();
-  if(!state.current) Hash.set(cz?"cosmos":"");
+  }
+  if(cz) Cosmos.start($("#cosmos")); else Cosmos.stop();
+  if(!state.current) Hash.set(cz?"cosmos":ld?"ladder":"");
 }
 
 function jumpToBand(key){
   if(state.view==="cosmos"){ Cosmos.flyToBand(key); return; }
+  if(state.view==="ladder") setView("codex");
   const el=$("#band-"+key); if(!el) return;
   const y=el.getBoundingClientRect().top+scrollY-$("#controls").offsetHeight-8;
   scrollTo({top:y,behavior:matchMedia("(prefers-reduced-motion: reduce)").matches?"instant":"smooth"});
@@ -53,6 +55,8 @@ document.addEventListener("DOMContentLoaded",async()=>{
   $$(".viewsw [data-view]").forEach(b=>b.addEventListener("click",()=>setView(b.dataset.view)));
   $$("#spine b").forEach(b=>b.addEventListener("click",()=>jumpToBand(b.dataset.band)));
   $("#t-cosmos").addEventListener("click",()=>setView("cosmos"));
+  $("#t-ladder").addEventListener("click",()=>setView("ladder"));
+  $("#ld-human").textContent=HUMAN.power;
   $("#t-omen").addEventListener("click",()=>Omen.open());
   $("#t-quiz").addEventListener("click",()=>Quiz.start());
   $("#scrim").addEventListener("click",closeDetail);
@@ -76,9 +80,10 @@ document.addEventListener("DOMContentLoaded",async()=>{
   measureControls();
   $("#hint").innerHTML=HINTS.band;
 
-  /* 網址錨點:#e121 打開該靈,#cosmos 進入星宇,#omen 抽籤,#quiz 測驗 */
+  /* 網址錨點:#e121 打開該靈,#ladder 實力階梯,#cosmos 進入星宇,#omen 抽籤,#quiz 測驗 */
   const h=Hash.get();
   if(h==="cosmos") setView("cosmos");
+  else if(h==="ladder") setView("ladder");
   else if(/^e\d+$/.test(h)&&byRank(h.slice(1))) openDetail(+h.slice(1));
   else if(h==="omen") Omen.open();
   else if(h==="quiz") Quiz.start();

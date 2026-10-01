@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>靈體圖鑑 · 本體光譜</title>
-<meta name="description" content="由法則到物質的一條光譜:237 位靈體、七環、六軸,附 3D 星宇、3D 雕像展示台、本命靈測驗與今日靈籤。">
+<meta name="description" content="237 位神靈的實力圖鑑:七個實力等級、六項能力、職權與管轄,同一個普通人比一比差幾遠。附實力階梯、3D 星宇、3D 雕像展示台、本命靈測驗與今日靈籤。">
 <meta name="theme-color" content="#0E1015">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -26,7 +26,8 @@
     </div>
     <p class="thesis">由「法則」到「物質」的一條光譜。權力最大的那個認不得你,權力最小的那個專程來找你——<em>意義,住在中間被相信、被記得的那段暖帶。</em></p>
     <div class="hero-tools">
-      <button class="tool primary" id="t-cosmos" type="button">進入星宇 <span class="tk">3D</span></button>
+      <button class="tool primary" id="t-ladder" type="button">看實力階梯 <span class="tk">由你到宇宙</span></button>
+      <button class="tool" id="t-cosmos" type="button">進入星宇 <span class="tk">3D</span></button>
       <button class="tool" id="t-omen" type="button">抽今日靈籤 <span class="tk">Omen</span></button>
       <button class="tool" id="t-quiz" type="button">測你的本命靈 <span class="tk">Quiz</span></button>
     </div>
@@ -42,6 +43,7 @@
       </div>
       <div class="viewsw" role="group" aria-label="檢視">
         <button type="button" data-view="codex" aria-pressed="true">圖鑑</button>
+        <button type="button" data-view="ladder" aria-pressed="false">實力階梯</button>
         <button type="button" data-view="cosmos" aria-pressed="false">星宇 3D</button>
       </div>
       <div class="ctl-group" id="regions">
@@ -71,6 +73,18 @@
 <div class="wrap" id="codex">
   <main id="spectrum" aria-label="靈體光譜"></main>
 </div>
+
+<section id="ladder" aria-label="實力階梯:由宇宙級到一人級" hidden>
+  <div class="wrap">
+    <header class="ld-head">
+      <p class="ld-eyebrow">實力階梯 · The Ladder of Power</p>
+      <h2>由你,數到宇宙</h2>
+      <p class="ld-lede">237 位神靈按本體權能分成七級。最底一格是你:權能 <b id="ld-human">5</b>。每升一級,管的範圍就大一個量級——由一個人、一條街、一個港口,到一場戰爭、一個神職、整個世界,最後是連眾神都受其約束的法則。</p>
+      <button class="tool" id="ladder-spectrum" type="button">複製全光譜群像指令 <span class="tk">ChatGPT</span></button>
+    </header>
+    <div class="ld-rows" id="ladder-rows"></div>
+  </div>
+</section>
 
 <section id="cosmos" aria-label="星宇 3D:七環光譜塔" hidden>
   <div class="cz-top">
@@ -118,6 +132,7 @@
 <script src="src/data/realm.js"></script>
 <script src="src/prompts.js"></script>
 <script src="src/core.js"></script>
+<script src="src/power.js"></script>
 <script src="src/features.js"></script>
 <script src="src/stage3d.js"></script>
 <script src="src/cosmos3d.js"></script>

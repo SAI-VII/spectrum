@@ -1,5 +1,7 @@
 # 靈體圖鑑 · 本體光譜:視覺化研究與改版說明
 
+> 這是第一輪研究,保留作紀錄。第三版已把重點改為「實力」:六邊形印記換成實力環,抽屜的雷達換成實力卡與六項能力條,另加實力階梯;圖像指令亦不再要求六邊形,改為畫出實力等級、職權與凡人比例。見 [`chatgpt-image-prompts.md`](chatgpt-image-prompts.md)。
+
 > 第二輪研究(視覺最佳級別、全部靈體 3D 化)見 [`visual-excellence.md`](visual-excellence.md) 與 [`meshy-pipeline.md`](meshy-pipeline.md)。
 
 這份研究回答三個問題:原作好在哪、缺在哪;一個「極具視覺畫面」的 app 從何而來;以及這次改版具體做了甚麼、下一步做甚麼。
