@@ -57,7 +57,10 @@ node tools/meshy/generate.mjs --dry-run      # 看計劃與預計點數
 node tools/meshy/generate.mjs --flagship     # 生成(可中斷再續)
 node tools/meshy/optimize.mjs                # 兩個網頁版本
 node tools/meshy/thumbs.mjs                  # 統一縮圖
+node tools/meshy/import.mjs ~/Downloads --build   # 已在 Meshy 網站下載的 GLB:按檔名配對匯入
 ```
+
+GLB 匯入不了?立體台會寫出原因,對照 [`docs/meshy-pipeline.md`](docs/meshy-pipeline.md#glb-匯入不了) 的表。
 
 詳見 [`docs/meshy-pipeline.md`](docs/meshy-pipeline.md)。
 
@@ -91,6 +94,6 @@ assets/manifest.js      立像登記冊(手寫)
 assets/models.js        3D 模型登記冊(Meshy 流程自動產生)
 assets/refs/            ChatGPT 3D 參考圖(Meshy 用)
 tools/gen-prompts.js    指令集產生器
-tools/meshy/            Meshy 批量生成、網頁優化、縮圖渲染
+tools/meshy/            Meshy 批量生成、匯入已下載 GLB、網頁優化、縮圖渲染
 original/spectrum.html  原作
 ```

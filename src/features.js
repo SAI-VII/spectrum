@@ -104,20 +104,22 @@ const Portraits=(()=>{
       r=+r; live.forEach(u=>URL.revokeObjectURL(u)); live=[];
       const rec=await record(r), m=reg(r), out={};
       for(const k of ["img","depth","model"]){
-        if(rec[k] instanceof Blob){ const u=URL.createObjectURL(rec[k]); live.push(u); out[k]=u; out.local=true; }
+        if(rec[k] instanceof Blob){ const u=URL.createObjectURL(rec[k]); live.push(u); out[k]=u; out.local=true; if(k==="model") out.modelBlob=rec[k]; }
         else if(m[k]) out[k]=m[k];
       }
       if(out.model&&!rec.model&&m.source) out.source=m.source;
       return (out.img||out.model)?out:null;
     },
-    async put(r,kind,blob){ r=+r; const rec={...(await record(r))}; rec[kind]=blob; mem[r]=rec; await tx("readwrite",s=>s.put(rec,r)); local.add(r); },
+    /* 回傳是否已存進 IndexedDB;失敗(私密瀏覽、空間不足)時仍可在本次使用,只是重新整理後不保留 */
+    async put(r,kind,blob){ r=+r; const rec={...(await record(r))}; rec[kind]=blob; mem[r]=rec; local.add(r);
+      const ok=await tx("readwrite",s=>s.put(rec,r)); return ok!==null&&ok!==undefined; },
     async clear(r){ r=+r; delete mem[r]; local.delete(r); await tx("readwrite",s=>s.delete(r)); }
   };
 })();
 
 const StageUI={
   mount(stage,e,col){
-    const rank=e.rank, mode=$("#stage-mode"), clearBtn=$("#pf-clear"), swap=$("#pf-swap"), full=$("#pf-full"), gl=stage.querySelector(".stage-gl");
+    const rank=e.rank, mode=$("#stage-mode"), errBox=$("#stage-err"), clearBtn=$("#pf-clear"), swap=$("#pf-swap"), full=$("#pf-full"), gl=stage.querySelector(".stage-gl");
     let prefer="model";
     const refresh=async()=>{
       const a=await Portraits.get(rank);
@@ -128,21 +130,36 @@ const StageUI={
       const res=await Stage3D.show(gl,e,col,a,prefer);
       if(state.current!==rank||!res.label) return;
       mode.textContent=res.label;
+      errBox.hidden=!res.error; errBox.textContent=res.error||"";
       if(!res.ok) gl.innerHTML=`<div class="stage-fallback">${glyph(e,150,col)}</div>`;
     };
+    /* 以內容判斷檔案種類(GLB 以 "glTF" 開頭),不靠副檔名:手機下載的檔案常被改名 */
+    const sniff=async f=>{
+      const h=new Uint8Array(await f.slice(0,4).arrayBuffer());
+      if(h[0]===0x67&&h[1]===0x6C&&h[2]===0x54&&h[3]===0x46) return "model";
+      if(f.type.startsWith("image/")||/\.(png|jpe?g|webp|avif|gif)$/i.test(f.name)) return /depth|深度/i.test(f.name)?"depth":"img";
+      if(/\.(glb|gltf|fbx|obj|usdz|stl|3mf|blend|zip)$/i.test(f.name)) return (await GLB.check(f))?"other3d":"model";
+      return null;
+    };
+    const store=async(kind,f)=>{
+      if(kind==="other3d"){ errBox.hidden=false; errBox.textContent=`${f.name}:${await GLB.check(f)}`; return false; }
+      if(!kind){ toast("只接受圖像或 GLB 模型"); return false; }
+      if(kind==="model"&&f.size>80*1048576) toast(`模型 ${GLB.mb(f.size)},手機可能載不到;建議先用 optimize.mjs 縮小`);
+      const saved=await Portraits.put(rank,kind,f);
+      toast((kind==="img"?"已放入肖像,正在立體化":kind==="depth"?"已放入深度圖":"已放入 GLB 模型")+(saved?"":";瀏覽器未能儲存,重新整理後不會保留"));
+      return true;
+    };
     const take=async files=>{
-      for(const f of files){
-        const kind=/\.glb$/i.test(f.name)?"model":/depth|深度/i.test(f.name)?"depth":f.type.startsWith("image/")?"img":null;
-        if(!kind){ toast("只接受圖像或 .glb 模型"); continue; }
-        await Portraits.put(rank,kind,f);
-        toast(kind==="img"?"已放入肖像,正在立體化":kind==="depth"?"已放入深度圖":"已放入 GLB 模型");
-      }
+      for(const f of files) await store(await sniff(f),f);
       paint(); refresh();
     };
     const pick=(id,kind)=>$(id).addEventListener("change",async ev=>{
       const f=ev.target.files[0]; if(!f) return;
-      if(kind!=="model"&&!f.type.startsWith("image/")){ toast("請選擇圖像檔"); return; }
-      await Portraits.put(rank,kind,f); paint(); refresh();
+      ev.target.value="";
+      const k=kind==="model"?await sniff(f):(f.type.startsWith("image/")||/\.(png|jpe?g|webp|avif)$/i.test(f.name)?kind:null);
+      if(kind!=="model"&&!k){ toast("請選擇圖像檔"); return; }
+      if(kind==="model"&&k!=="model"){ errBox.hidden=false; errBox.textContent=`${f.name}:${(await GLB.check(f))||"這不是 GLB 檔。"}`; return; }
+      if(await store(k,f)){ paint(); refresh(); }
     });
     pick("#pf-img","img"); pick("#pf-depth","depth"); pick("#pf-model","model");
     clearBtn.addEventListener("click",async()=>{ await Portraits.clear(rank); paint(); refresh(); toast("已移除此靈的本機素材"); });

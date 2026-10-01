@@ -175,10 +175,10 @@ function openDetail(rank){
     `<div class="dr-meta">${meta}</div>`+
     `<div class="stage" id="stage" style="--sc:${col}">`+
       `<div class="stage-gl"></div>`+
-      `<span class="stage-mode" id="stage-mode">六軸晶體</span><div class="stage-ui">`+
+      `<span class="stage-mode" id="stage-mode">六軸晶體</span><p class="stage-err" id="stage-err" role="alert" hidden></p><div class="stage-ui">`+
         `<label class="sbtn">放入肖像<input type="file" accept="image/*" id="pf-img"></label>`+
         `<label class="sbtn">深度圖<input type="file" accept="image/*" id="pf-depth"></label>`+
-        `<label class="sbtn">GLB 模型<input type="file" accept=".glb,model/gltf-binary" id="pf-model"></label>`+
+        `<label class="sbtn">GLB 模型<input type="file" id="pf-model"></label>`+
         `<button class="sbtn" id="pf-swap" type="button" hidden>看肖像</button>`+
         `<button class="sbtn" id="pf-full" type="button">全螢幕</button>`+
         `<button class="sbtn" id="pf-clear" type="button" hidden>移除</button></div>`+

@@ -58,7 +58,8 @@
 
 1. (可選但建議)用 [`prompts/refs/`](prompts/refs/) 的指令請 ChatGPT 生成灰底雕像參考圖,存成 `assets/refs/{編號}.png`。
 2. `node tools/meshy/generate.mjs`:有參考圖的走 Image to 3D,有四視圖的走 Multi-Image to 3D,其餘走 Text to 3D。可中斷、可續、可設點數上限。
-3. `node tools/meshy/optimize.mjs`:每位產生展示版(≤ 60,000 面)與星宇用的輕量版(≤ 4,000 面),WebP 貼圖 ＋ Meshopt 壓縮。
+3. `node tools/meshy/optimize.mjs`:每位產生展示版(≤ 60,000 面)與星宇用的輕量版(≤ 4,000 面),WebP 貼圖 ＋ 頂點量化(不需解碼器)。
+   已經自己下載了 GLB?用 `node tools/meshy/import.mjs 資料夾 --build` 按檔名配對匯入。
 4. `node tools/meshy/thumbs.mjs`:以統一鏡頭與燈光渲染透明背景縮圖。
 5. app 自動讀取 `assets/models.js`:圖鑑顯示雕像縮圖,抽屜變成展示櫃,星宇按遠近載入雕像。
 

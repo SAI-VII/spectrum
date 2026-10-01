@@ -8,17 +8,91 @@
 
 const loadThree=(()=>{ let p=null; return ()=>p||(p=import("three").catch(err=>{p=null;throw err;})); })();
 
-/* 共用 GLTF 載入器:Meshopt(優化後的網頁模型)與 Draco(外來模型)都能讀 */
-const loadGLTF=(()=>{
-  let p=null;
-  const get=()=>p||(p=Promise.all([import("three/addons/loaders/GLTFLoader.js"),import("three/addons/libs/meshopt_decoder.module.js"),import("three/addons/loaders/DRACOLoader.js")])
-    .then(([{GLTFLoader},{MeshoptDecoder},{DRACOLoader}])=>{
-      const l=new GLTFLoader(); l.setMeshoptDecoder(MeshoptDecoder);
-      const d=new DRACOLoader(); d.setDecoderPath("https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/libs/draco/gltf/"); l.setDRACOLoader(d);
-      return l;
-    }).catch(err=>{p=null;throw err;}));
-  return url=>get().then(l=>l.loadAsync(url));
+/* GLB 讀取器
+   · 直接讀 File/Blob 的位元組,不用 fetch(blob:)——claude.ai Artifact 這類嚴格環境會擋住這種讀法
+   · 內嵌貼圖用 <img> 解碼,不用 Chrome 預設的 ImageBitmapLoader(它同樣靠 fetch)
+   · 只在模型真的用了 Meshopt 壓縮時才載入解碼器(它需要 WebAssembly,嚴格環境可能不准)
+   · 讀之前先檢查檔頭與擴充,失敗時說出原因(格式不對、Draco、KTX2、file://、路徑錯⋯) */
+class ModelError extends Error{ constructor(code,message){ super(message); this.code=code; } }
+const GLB=(()=>{
+  let base=null;
+  const mb=n=>(n/1048576).toFixed(n<10485760?1:0)+" MB";
+  const fail=(code,msg)=>{ throw new ModelError(code,msg); };
+  function loader(){
+    return base||(base=Promise.all([loadThree(),import("three/addons/loaders/GLTFLoader.js"),import("three/addons/loaders/DRACOLoader.js")])
+      .then(([T,{GLTFLoader},{DRACOLoader}])=>{
+        const l=new GLTFLoader();
+        const d=new DRACOLoader(); d.setDecoderPath("https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/libs/draco/gltf/"); l.setDRACOLoader(d);
+        l.register(parser=>{ parser.textureLoader=new T.TextureLoader(parser.options.manager); return {name:"spectrum_img_textures"}; });
+        return {T,l};
+      }).catch(err=>{ base=null; throw err; }));
+  }
+  async function bytes(src){
+    if(src instanceof Blob) return src.arrayBuffer();
+    if(location.protocol==="file:"&&!/^(blob|data|https?):/i.test(src))
+      fail("file","以 file:// 直接打開網頁時,瀏覽器不准讀取模型檔。請用本機伺服器開啟(python3 -m http.server),或把 GLB 直接拖進立體台。");
+    let res;
+    try{ res=await fetch(src); }catch{ fail("blocked",`這個環境不准讀取 ${src}。請把 GLB 直接拖進立體台。`); }
+    if(!res.ok) fail("http",res.status===404?`找不到檔案 ${src}。請檢查 assets/models.js 或 manifest.js 的路徑與檔名。`:`讀取 ${src} 失敗(HTTP ${res.status})。`);
+    return res.arrayBuffer();
+  }
+  /* 看檔頭:GLB 以 "glTF" 開頭;其餘常見 3D 格式給出對應提示 */
+  function inspect(buf){
+    const info={bytes:buf.byteLength,ext:[]};
+    const head=new Uint8Array(buf,0,Math.min(64,buf.byteLength)), text=new TextDecoder().decode(head);
+    if(buf.byteLength>=20&&text.startsWith("glTF")){
+      const dv=new DataView(buf), len=dv.getUint32(12,true), type=dv.getUint32(16,true);
+      if(type!==0x4E4F534A||20+len>buf.byteLength) fail("corrupt","這個 GLB 檔不完整(可能下載未完成),請重新下載。");
+      const json=JSON.parse(new TextDecoder().decode(new Uint8Array(buf,20,len)));
+      info.ext=json.extensionsUsed||[];
+      return info;
+    }
+    if(text.trimStart().startsWith("{")){
+      let json=null; try{ json=JSON.parse(new TextDecoder().decode(buf)); }catch{}
+      if(json?.asset){
+        const external=[...(json.buffers||[]),...(json.images||[])].some(x=>x.uri&&!/^data:/.test(x.uri));
+        if(external) fail("gltf",".gltf 檔需要旁邊的 .bin 與貼圖檔,單獨匯入讀不到。請改為匯出單一檔案的 .glb(glTF Binary)。");
+        info.ext=json.extensionsUsed||[]; return info;
+      }
+    }
+    fail("format",notGlb(text));
+  }
+  /* 由檔頭認出常見的其他 3D 格式,給出對應提示;是 GLB/glTF 則回傳 null */
+  function notGlb(text){
+    if(text.startsWith("glTF")||text.trimStart().startsWith("{")) return null;
+    const kind=text.startsWith("Kaydara FBX")||/FBXHeader/.test(text)?"FBX":text.startsWith("PK")?"壓縮檔(.zip 或 .usdz)":
+      text.startsWith("solid")?"STL":/^(#|v |o |mtllib|g )/m.test(text)?"OBJ":text.startsWith("BLENDER")?"Blender (.blend)":null;
+    return kind?`這是 ${kind},不是 GLB。請在 Meshy 下載時選擇 GLB 格式${kind.startsWith("壓縮")?",或先解壓再選裏面的 .glb":""}。`:"這不是 GLB 檔(檔頭不是 glTF)。請確認下載的是 .glb 格式。";
+  }
+  /* 放入前先看頭 64 bytes:是 GLB 回傳 null,否則回傳原因 */
+  async function check(file){ return notGlb(new TextDecoder().decode(new Uint8Array(await file.slice(0,64).arrayBuffer()))); }
+  async function load(src){
+    const buf=await bytes(src), info=inspect(buf);
+    const {l}=await loader();
+    if(info.ext.includes("KHR_texture_basisu")) fail("ktx2","這個 GLB 的貼圖是 KTX2 格式,這裏讀不到。請先執行 node tools/meshy/optimize.mjs,會轉成 WebP。");
+    if(info.ext.includes("EXT_meshopt_compression")){
+      try{ const {MeshoptDecoder}=await import("three/addons/libs/meshopt_decoder.module.js"); await MeshoptDecoder.ready; l.setMeshoptDecoder(MeshoptDecoder); }
+      catch{ fail("meshopt","這個 GLB 用了 Meshopt 壓縮,但這個環境不允許 WebAssembly 解碼。請用 node tools/meshy/optimize.mjs 重新輸出(預設已不用 Meshopt)。"); }
+    }
+    try{ return await l.parseAsync(buf,""); }
+    catch(err){
+      if(info.ext.includes("KHR_draco_mesh_compression")) fail("draco","這個 GLB 用了 Draco 壓縮,這個環境載入不到解碼器。請先執行 node tools/meshy/optimize.mjs(會轉成不需解碼器的格式),或在下載時不選壓縮。");
+      fail("parse",`GLB 解析失敗:${err?.message||err}`);
+    }
+  }
+  /* 手機顯示卡最大只收 4096(部分 2048)的貼圖;Meshy 的 4K/8K 貼圖先縮細,避免變黑或當機 */
+  function capTextures(root,limit){
+    const done=new Set();
+    root.traverse(o=>{ [].concat(o.material||[]).forEach(m=>{ for(const k in m){ const t=m[k];
+      if(!t?.isTexture||done.has(t)||!t.image) continue; done.add(t);
+      const w=t.image.width, h=t.image.height; if(!(w>limit||h>limit)) continue;
+      const s=limit/Math.max(w,h), c=document.createElement("canvas"); c.width=Math.round(w*s); c.height=Math.round(h*s);
+      c.getContext("2d").drawImage(t.image,0,0,c.width,c.height); t.image=c; t.needsUpdate=true;
+    } }); });
+  }
+  return {load,check,capTextures,mb};
 })();
+const loadGLTF=src=>GLB.load(src);
 
 /* 所屬環色調的攝影棚:暖白柔光箱在左上前方,兩條環色燈條在後方,地面微弱反光。
    以 PMREM 轉成環境光,令模型的金屬、漆面、大理石都反射出同一環的顏色。 */
@@ -190,9 +264,10 @@ const Stage3D=(()=>{
   }
 
   /* 展示櫃:模型高度統一為 2.1,腳底落在地台上;環色光環地台 ＋ 接觸陰影 ＋ 暖白主光與環色輪廓光 */
-  async function buildModel(url,col){
-    const gltf=await loadGLTF(url);
+  async function buildModel(src,col){
+    const gltf=await loadGLTF(src);
     const root=gltf.scene, c=new T.Color(col);
+    GLB.capTextures(root,Math.min(renderer.capabilities.maxTextureSize,matchMedia("(max-width:720px)").matches?2048:4096));
     const box=new T.Box3().setFromObject(root), size=box.getSize(new T.Vector3()), ctr=box.getCenter(new T.Vector3());
     const s=Math.min(2.1/Math.max(size.y,1e-6),2.6/Math.max(size.x,size.z,1e-6));
     root.scale.setScalar(s); root.position.set(-ctr.x*s,-box.min.y*s-1.05,-ctr.z*s);
@@ -223,12 +298,16 @@ const Stage3D=(()=>{
     if(my!==token) return {ok:true,label:""};
     host=el; host.appendChild(renderer.domElement); ro.disconnect(); ro.observe(host); resize();
     drag.x=drag.y=0;
-    let next=null, label="六軸晶體 · 拖曳旋轉";
-    const wantModel=assets?.model&&!(prefer==="portrait"&&assets?.img);
+    let next=null, label="六軸晶體 · 拖曳旋轉", error=null;
+    const wantModel=(assets?.model||assets?.modelBlob)&&!(prefer==="portrait"&&assets?.img);
     try{
-      if(wantModel){ next=await buildModel(assets.model,col); label=`3D 模型${assets.source?` · ${assets.source}`:""} · 拖曳旋轉、滾輪縮放`; }
+      if(wantModel){ next=await buildModel(assets.modelBlob||assets.model,col); label=`3D 模型${assets.source?` · ${assets.source}`:""} · 拖曳旋轉、滾輪縮放`; }
       else if(assets?.img){ const r=await buildPortrait(assets.img,assets.depth,col); next=r.obj; label=r.depth?"肖像 · 深度圖立體化":"肖像 · 自動估算深度(近似)"; }
-    }catch(err){ console.warn("素材載入失敗",err); next=null; label="素材未能載入 · 改顯六軸晶體"; }
+    }catch(err){
+      console.warn("素材載入失敗",err); next=null;
+      error=err instanceof ModelError?err.message:wantModel?`GLB 載入失敗:${err?.message||err}`:`圖像載入失敗:${err?.message||err}`;
+      label=wantModel?"GLB 未能載入 · 暫顯六軸晶體":"圖像未能載入 · 暫顯六軸晶體";
+    }
     if(my!==token){ dispose(next); return {ok:true,label:""}; }
     if(!next) next=buildCrystal(e,col);
     if(obj){ scene.remove(obj); dispose(obj); }
@@ -246,7 +325,7 @@ const Stage3D=(()=>{
       if(obj.userData.clips){ mixer=new T.AnimationMixer(obj); mixer.clipAction(obj.userData.clips[0]).play(); }
     }else{ camera.fov=35; camera.updateProjectionMatrix(); }
     start();
-    return {ok:true,label,kind:obj.userData.kind};
+    return {ok:true,label,error,kind:obj.userData.kind};
   }
 
   function tick(){

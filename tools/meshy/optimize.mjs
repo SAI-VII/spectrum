@@ -1,20 +1,24 @@
 /* 把 Meshy 原始高模轉成網頁用的兩個版本:
- *   assets/models/{編號}.glb       抽屜立體台用:≤ 60,000 三角面、貼圖 ≤ 2048 WebP、Meshopt 壓縮
- *   assets/models/lod/{編號}.glb   星宇 3D 用:  ≤ 4,000 三角面、貼圖 256 WebP、Meshopt 壓縮
+ *   assets/models/{編號}.glb       抽屜立體台用:≤ 60,000 三角面、貼圖 ≤ 2048 WebP
+ *   assets/models/lod/{編號}.glb   星宇 3D 用:  ≤ 4,000 三角面、貼圖 256 WebP
  * 兩者都先置中、把腳底放在原點,方便 app 統一擺放。
+ * 輸入可以是 Draco 壓縮的 GLB;輸出預設用 KHR_mesh_quantization(瀏覽器不需任何解碼器)。
  *
  *   cd tools/meshy && npm install          (第一次)
  *   node tools/meshy/optimize.mjs          處理所有未優化的模型
  *   node tools/meshy/optimize.mjs --only 121 --force
  *
- * 選 WebP ＋ Meshopt 而不是 KTX2 ＋ Draco:兩者的解碼器都是純 JS,在 claude.ai Artifact 內也能載入。 */
+ *   node tools/meshy/optimize.mjs --meshopt   改用 Meshopt 壓縮(檔案再細一半,但瀏覽器要用 WebAssembly 解碼;
+ *                                            claude.ai Artifact 這類嚴格環境不准,只適合自架網站)
+ * 不用 Draco 與 KTX2:兩者的解碼器要額外下載,在嚴格環境同樣會被擋。 */
 import fs from "node:fs";
 import path from "node:path";
 import { NodeIO, Logger } from "@gltf-transform/core";
 import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
-import { dedup, prune, weld, simplify, textureCompress, meshopt, center, getBounds } from "@gltf-transform/functions";
+import { dedup, prune, weld, simplify, textureCompress, meshopt, quantize, reorder, center, getBounds } from "@gltf-transform/functions";
 import { MeshoptEncoder, MeshoptDecoder, MeshoptSimplifier } from "meshoptimizer";
 import sharp from "sharp";
+import draco3d from "draco3dgltf";
 import { P, exists, args } from "./paths.mjs";
 import { writeManifest } from "./manifest.mjs";
 
@@ -26,7 +30,8 @@ const LEVELS = [
 
 await Promise.all([MeshoptEncoder.ready, MeshoptDecoder.ready, MeshoptSimplifier.ready]);
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({
-  "meshopt.encoder": MeshoptEncoder, "meshopt.decoder": MeshoptDecoder
+  "meshopt.encoder": MeshoptEncoder, "meshopt.decoder": MeshoptDecoder,
+  "draco3d.decoder": await draco3d.createDecoderModule()   // 讀得到 Draco 壓縮的輸入
 });
 
 const triCount = doc => doc.getRoot().listMeshes().reduce((n, m) => n + m.listPrimitives().reduce((k, p) => {
@@ -44,8 +49,11 @@ async function build(src, level) {
     simplify({ simplifier: MeshoptSimplifier, ratio: Math.min(1, level.tris / Math.max(before, 1)), error: level.error }),
     textureCompress({ encoder: sharp, targetFormat: "webp", resize: [level.tex, level.tex], quality: level.name === "lod" ? 70 : 85 }),
     prune(),
-    meshopt({ encoder: MeshoptEncoder, level: "medium" })
+    ...(o.meshopt ? [meshopt({ encoder: MeshoptEncoder, level: "medium" })]
+                  : [reorder({ encoder: MeshoptEncoder }), quantize()])
   );
+  /* 輸入若用了 Draco,輸出時拿走這個擴充(資料已解壓) */
+  doc.getRoot().listExtensionsUsed().filter(x => x.extensionName === "KHR_draco_mesh_compression").forEach(x => x.dispose());
   const out = path.join(level.dir, path.basename(src));
   await io.write(out, doc);
   const box = getBounds(doc.getRoot().listScenes()[0]);

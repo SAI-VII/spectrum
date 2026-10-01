@@ -99,10 +99,22 @@ node tools/meshy/optimize.mjs
 
 | 版本 | 位置 | 用途 | 規格 | 約大小 |
 |---|---|---|---|---|
-| 展示版 | `assets/models/{編號}.glb` | 抽屜立體台 | ≤ 60,000 面、貼圖 ≤ 2048 WebP、Meshopt | 1–3 MB |
-| 輕量版 | `assets/models/lod/{編號}.glb` | 星宇 3D | ≤ 4,000 面、貼圖 256 WebP、Meshopt | 50–150 KB |
+| 展示版 | `assets/models/{編號}.glb` | 抽屜立體台 | ≤ 60,000 面、貼圖 ≤ 2048 WebP、頂點量化 | 1–4 MB |
+| 輕量版 | `assets/models/lod/{編號}.glb` | 星宇 3D | ≤ 4,000 面、貼圖 256 WebP、頂點量化 | 50–150 KB |
 
-兩者都已置中、腳底對齊原點。選 WebP ＋ Meshopt 而不選 KTX2 ＋ Draco,是因為兩者的解碼器都是純 JavaScript,在 claude.ai Artifact 內也能用。
+兩者都已置中、腳底對齊原點。輸出只用瀏覽器原生讀得懂的格式(WebP 貼圖、KHR_mesh_quantization 頂點量化),不需要任何解碼器,所以在 claude.ai Artifact 這類嚴格環境也能載入。輸入是 Draco 壓縮的 GLB 也可以,會自動解壓。
+
+自架網站(例如 GitHub Pages)想檔案再細一半,可加 `--meshopt`;但 Meshopt 要用 WebAssembly 解碼,在 Artifact 內會載入失敗。
+
+### 已經有 GLB?(例如在 Meshy 網站逐個生成)
+
+```bash
+node tools/meshy/import.mjs ~/Downloads/meshy --dry-run    # 先看配對
+node tools/meshy/import.mjs ~/Downloads/meshy --build      # 匯入、優化、渲染縮圖一次做完
+node tools/meshy/import.mjs Meshy_AI_xxx.glb --as 121       # 認不出的,指定編號
+```
+
+程式按檔名配對靈體:檔名以編號開頭(`121.glb`、`#121 天后.glb`),或檔名包含靈體的英文或中文名(Meshy 的檔名通常含指令開頭幾個字,例如 `Meshy_AI_Collectible_statue_of_Tin_Hau_…`)。配對成功的複製到 `assets/models/raw/{編號}.glb`。只放進 `assets/models/` 而沒有改成編號檔名的 GLB,app 是不會讀到的。
 
 ## 5. 渲染統一縮圖
 
@@ -168,6 +180,27 @@ git commit -m "Add Meshy models"
 點數價目取自 Meshy 公佈的 API 價目(2026 年 9 月),以你帳戶實際扣數為準;`generate.mjs` 開始時會顯示帳戶餘額。
 
 ---
+
+## GLB 匯入不了?
+
+在 app 打開該靈體,立體台會用紅框寫出原因。對照下表:
+
+| 立體台顯示 | 原因 | 處理 |
+|---|---|---|
+| 這是 FBX / OBJ / STL / 壓縮檔,不是 GLB | 下載時選錯格式,或改了副檔名 | 在 Meshy 的下載選單選 **GLB**;zip 先解壓 |
+| .gltf 檔需要旁邊的 .bin 與貼圖檔 | 匯出成多檔的 glTF | 匯出時選 glTF Binary(.glb) |
+| 這個 GLB 用了 Draco 壓縮 | 嚴格環境(claude.ai Artifact)載入不到 Draco 解碼器 | `node tools/meshy/import.mjs 檔案 --build`,輸出不再用 Draco |
+| 這個 GLB 用了 Meshopt 壓縮 | 嚴格環境不准 WebAssembly | 重新執行 `optimize.mjs`(預設已不用 Meshopt) |
+| 貼圖是 KTX2 格式 | 這裏讀不到 KTX2 | 重新執行 `optimize.mjs`,會轉成 WebP |
+| 以 file:// 直接打開網頁 | 雙擊 index.html 開啟時,瀏覽器不准讀取模型檔 | `python3 -m http.server 8000` 再開 http://localhost:8000,或把 GLB 直接拖進立體台 |
+| 找不到檔案 assets/models/… | 登記冊的路徑或檔名不對 | 用 `import.mjs` 匯入,或執行 `node tools/meshy/manifest.mjs` 重寫登記冊 |
+| 這個 GLB 檔不完整 | 下載未完成 | 重新下載 |
+| 瀏覽器未能儲存,重新整理後不會保留 | 私密瀏覽或儲存空間不足 | 改用 `import.mjs` 把檔案放進專案 |
+
+另外兩個常見情況:
+
+- **選檔時 .glb 是灰色、選不到**(iPhone、部分 Android):已修正,「GLB 模型」按鈕不再限制檔案類型,改為讀檔頭判斷。
+- **模型出現但很慢或手機當機**:Meshy 原檔常有 4K/8K 貼圖與數十萬面。立體台會自動把貼圖縮到手機可承受的大小,但最好先用 `import.mjs --build` 產生網頁版本。
 
 ## 疑難
 
