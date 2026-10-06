@@ -48,6 +48,7 @@ python3 -m http.server 8000
 
 | 文件 | 內容 |
 |---|---|
+| [`docs/boardgame/design.md`](docs/boardgame/design.md) | **桌遊設計稿 v0.1**:《十三宮 · 輪迴迷宮》的規則、十三宮玩法、靈界回合、輪迴傳承、3D 打印、待決問題 |
 | [`docs/visual-excellence.md`](docs/visual-excellence.md) | **視覺最佳級別**:五件最重要的事、七個支柱、四級路線、品質檢查表 |
 | [`docs/meshy-pipeline.md`](docs/meshy-pipeline.md) | **Meshy 全部 3D 化**:操作步驟、參數、點數與時間、疑難 |
 | [`docs/chatgpt-image-prompts.md`](docs/chatgpt-image-prompts.md) | **圖像與 3D 指令第三版**:每張圖畫出實力等級、職權與凡人比例;風格聖經、七個等級、例子、實力群像、修圖句子 |
