@@ -50,7 +50,7 @@ python3 -m http.server 8000
 |---|---|
 | [`docs/boardgame/design.md`](docs/boardgame/design.md) | **桌遊設計稿 v0.1**:《十三宮 · 輪迴迷宮》的規則、十三宮玩法、靈界回合、輪迴傳承、3D 打印、待決問題 |
 | [`docs/boardgame/rules-v0.2.md`](docs/boardgame/rules-v0.2.md) | **桌遊規則 v0.2(現行)**:《十二宮 · 輪迴迷宮》,凡人永遠是凡人;業與名聲、缺陷、命運骰、靈界與三種結局 |
-| [`docs/boardgame/meshy-print-prompts.md`](docs/boardgame/meshy-print-prompts.md) | **桌遊 3D 打印指令全集**:39 個模型的 Meshy 指令(十二宮地貌、終宮、補做的神像、棋子、配件),附尺寸、點數與打印設定 |
+| [`docs/boardgame/meshy-print-prompts.md`](docs/boardgame/meshy-print-prompts.md) | **桌遊 3D 打印指令全集**:39 個模型各有 ChatGPT 參考圖指令與 Meshy 指令(十二宮地貌、終宮、補做的神像、棋子、配件),附統一風格的開場設定、尺寸、點數與打印設定 |
 | [`docs/boardgame/depth-and-tension.md`](docs/boardgame/depth-and-tension.md) | **桌遊深度研究**:緊湊感的七個來源、三面鏡子、節奏、收尾儀式、對 v0.1 的十二項修改 |
 | [`docs/visual-excellence.md`](docs/visual-excellence.md) | **視覺最佳級別**:五件最重要的事、七個支柱、四級路線、品質檢查表 |
 | [`docs/meshy-pipeline.md`](docs/meshy-pipeline.md) | **Meshy 全部 3D 化**:操作步驟、參數、點數與時間、疑難 |
