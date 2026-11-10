@@ -10,6 +10,12 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500&family=GFS+Didot&family=Noto+Serif+TC:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="src/game/game.css">
+<script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+}}
+</script>
 </head>
 <body>
 <div class="wrap">
@@ -30,11 +36,11 @@
     </div>
     <div class="seats" id="seats"></div>
     <div class="row"><button class="btn gold" data-a="start">派命盤,開始第一世</button></div>
-    <p class="note">這一版由 app 隨機派命盤並代管四德牌。各宮的特殊玩法、缺陷牌、眷顧與來世之籤還未做。</p>
+    <p class="note">這一版由 app 隨機派命盤並代管四德牌。立體版圖可以拖曳旋轉;已登記 3D 模型的神會以自己的雕像出現。各宮的特殊玩法、缺陷牌、眷顧與來世之籤還未做。</p>
   </main>
 
   <main id="table" hidden>
-    <div class="board-wrap" id="boardbox"></div>
+    <div class="board-wrap"><div id="board3d"></div><div id="board2d" hidden></div><button class="btn sm" id="viewsw" data-a="view">平面版圖</button></div>
     <div class="act">
       <section class="phase" id="phase" aria-live="polite"></section>
       <div class="souls" id="souls"></div>
@@ -46,6 +52,9 @@
 <div id="sheet" hidden></div>
 <script src="src/data/entities.js"></script>
 <script src="src/data/lore.js"></script>
+<script src="assets/models.js"></script>
+<script src="src/stage3d.js"></script>
+<script src="src/game/board3d.js"></script>
 <script src="src/game/game.js"></script>
 </body>
 </html>

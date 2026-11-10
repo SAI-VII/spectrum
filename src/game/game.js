@@ -34,7 +34,13 @@ const OMENS=[
  {n:"風平浪靜",t:"今天眾神沒有留意凡人。",f:()=>{}},
  {n:"流言",t:"厄里斯拋下金蘋果。名聲最高的人傲慢 +1。",f:S=>{const L=live(S);if(L.length)L.slice().sort((a,b)=>b.kleos-a.kleos)[0].hubris++;}}];
 
-let S=null;
+let S=null, use3d=true;
+/* 聲音:一下里拉琴的撥弦、一下低鼓。第一次點擊後才可發聲 */
+const Snd=(()=>{ let ctx=null; const on=()=>{ try{ ctx=ctx||new (window.AudioContext||window.webkitAudioContext)(); if(ctx.state==="suspended") ctx.resume(); }catch{} return ctx; };
+  function tone(f,dur,type,vol,when){ const c=on(); if(!c) return; const o=c.createOscillator(), g=c.createGain(), t=c.currentTime+(when||0); o.type=type; o.frequency.setValueAtTime(f,t);
+    g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(vol,t+.012); g.gain.exponentialRampToValueAtTime(.0001,t+dur); o.connect(g); g.connect(c.destination); o.start(t); o.stop(t+dur+.05); }
+  return {pluck:()=>{ [293.7,440,587.3].forEach((f,i)=>tone(f,1.6,"triangle",.07,i*.09)); }, good:()=>{ [392,493.9,587.3,784].forEach((f,i)=>tone(f,1.4,"triangle",.06,i*.07)); },
+    doom:()=>{ tone(55,2.2,"sine",.3); tone(58.3,2.2,"sine",.2,.02); tone(110,.5,"sawtooth",.04); }, tick:()=>tone(660,.25,"sine",.04)}; })();
 const save=()=>{ try{ localStorage.setItem("houses12",JSON.stringify(S)); }catch{} };
 const load=()=>{ try{ return JSON.parse(localStorage.getItem("houses12")); }catch{ return null; } };
 const live=S=>S.players.filter(p=>p.threads>0);
@@ -57,7 +63,7 @@ function newGame(seats){
   S={life:1,round:0,phase:"omen",turn:0,deck,deathAt:deck-rnd(4),log:[],over:false,
     players:seats.map((s,i)=>{ const gods=[null]; for(let h=1;h<=12;h++) gods.push({r:pick(POOL).rank,w:Math.random()<.35}); gods.push({r:pick(TELOS_GODS).rank,w:false});
       const p={i,name:s.name||`第 ${i+1} 位`,mortal:s.mortal,house:1,hubris:0,karma:0,kleos:0,threads:3,hand:[0,0,0,0],gods,punished:false,guide:false}; draw(p,5); return p; })};
-  log("第一世開始。眾人站在第 1 宮。"); save(); render();
+  log("第一世開始。眾人站在第 1 宮。"); Board3D.reset(); save(); render();
 }
 
 /* ── 版圖 ── */
@@ -102,14 +108,16 @@ function render(){
   $("#setup").hidden=!!S; $("#table").hidden=!S; $("#clock").hidden=!S;
   if(!S) return;
   $("#clock").innerHTML=`<span>第<b>${S.life}</b>世</span><span>第<b>${Math.min(S.round+1,S.deck)}</b>輪</span><span>時間牌餘<b>${S.deck-S.round}</b></span>`;
-  $("#boardbox").innerHTML=boardSVG();
+  $("#board2d").hidden=use3d&&!Board3D.failed; $("#board3d").hidden=!use3d||Board3D.failed; $("#viewsw").textContent=use3d&&!Board3D.failed?"平面版圖":"立體版圖"; $("#viewsw").hidden=Board3D.failed;
+  if(use3d&&!Board3D.failed) Board3D.mount($("#board3d"),S).then(ok=>{ if(!ok) render(); }); 
+  if(!use3d||Board3D.failed) $("#board2d").innerHTML=boardSVG();
   const [gk,h,t,b]=phaseHTML();
   $("#phase").innerHTML=`<span class="greek">${gk}</span><h2>${h}</h2><p>${t}</p><div class="row">${b}</div>`;
   $("#souls").innerHTML=S.players.map(soulHTML).join("");
   $("#log").innerHTML=S.log.map(l=>`<p>${l}</p>`).join("");
 }
-const sheet=html=>{ $("#sheet").hidden=false; $("#sheet").innerHTML=`<div class="panel" role="dialog" aria-modal="true"><div class="meander"></div>${html}</div>`; $("#sheet .panel").focus?.(); };
-const closeSheet=()=>{ $("#sheet").hidden=true; $("#sheet").innerHTML=""; save(); render(); };
+const sheet=html=>{ $("#sheet").hidden=false; $("#sheet").classList.toggle("dock",use3d&&Board3D.ok); $("#sheet").innerHTML=`<div class="panel" role="dialog" aria-modal="true"><div class="meander"></div>${html}</div>`; $("#sheet .panel").focus?.(); };
+const closeSheet=()=>{ Board3D.hideGod(); $("#sheet").hidden=true; $("#sheet").innerHTML=""; save(); render(); };
 
 /* ── 流程 ── */
 function nextTurn(){ S.turn++; if(S.turn>=S.players.length){ S.turn=0; S.phase="fate"; } closeSheet(); }
@@ -131,6 +139,7 @@ function trialUI(){
   if(!p.threads||p.house>=TELOS) return giveUI(p);
   const g=p.gods[p.house], e=god(g.r), H=HOUSES[p.house], need=demandOf(e,p.house,g.w), lack=lackOf(p,need), miss=lack.reduce((a,b)=>a+b), tier=powerTier(e.radar[0]), tgt=prayTarget(e,g.w);
   const helpers=S.players.filter(x=>x!==p&&x.hand.some((n,i)=>n&&lack[i]));
+  if(!trialUI.shown||trialUI.shown!==p.i+"-"+p.house+"-"+S.round){ trialUI.shown=p.i+"-"+p.house+"-"+S.round; Board3D.showGod(e,p.house,g.w); Snd.pluck(); }
   sheet(`<span class="greek">${H.gk} · 第 ${p.house} 宮「${H.v}」${H.cn}</span><h2>${esc(p.name)}面對${cn(e)}</h2>`+
     `<div class="god"><div class="medal${g.w?" wrath":""}" style="--bc:${bandHex(e)}">${cn(e)}</div><div><h3>${cn(e)}<span class="mood${g.w?" wrath":""}">${g.w?"怒":"喜"}</span></h3>`+
     `<p>${tier.cn} · 本體權能 ${e.radar[0]} · 可協商度 ${e.radar[3]}<br>${esc(e.influence||e.concept||"")}</p></div></div>`+
@@ -149,13 +158,14 @@ function resolve(path){
   else if(path==="cheng"){ need.forEach((n,i)=>p.hand[i]-=Math.min(n,p.hand[i])); const hb=Math.max(1,miss), kl=g.w?2:1; p.hubris=Math.min(10,p.hubris+hb); p.kleos+=kl;
     out=`你闖了過去,而且一口氣連過兩宮。<span class="bad">傲慢 +${hb}</span>,<b>名聲 +${kl}</b>。`+advance(p,2); log(`${esc(p.name)}在${cn(e)}面前逞強,傲慢 +${hb}。`); }
   else{ const i=p.hand.indexOf(Math.max(...p.hand)); p.hand[i]--; const r=d6(), tgt=prayTarget(e,g.w); die=`<div class="die roll">${r}</div>`;
+    if(r>=tgt) Snd.good();
     if(r>=tgt){ out=`你獻上一張「${VIRT[i]}」。<span class="good">${cn(e)}應允了。</span>`+advance(p,1); log(`${esc(p.name)}向${cn(e)}祈求,祂應允。`); }
     else{ out=`你獻上一張「${VIRT[i]}」。${cn(e)}沒有回應。<span class="sub">祂沒有義務回應你。</span>`; log(`${esc(p.name)}向${cn(e)}祈求,祂不理會。`); } }
   sheet(`<span class="greek">${HOUSES[Math.min(p.house,TELOS)].gk}</span><h2>${esc(p.name)}</h2>${die}<p class="verdict">${out}</p><div class="row"><button class="btn gold" data-a="next">下一位</button></div>`);
 }
 function doFate(){
   const rows=live(S).filter(p=>p.hubris>=4).map(p=>{ const r=d6(), hit=r<=p.hubris-3; let t;
-    if(hit){ const n=pick(NEMESIS); p.threads--; p.hubris=3; p.punished=true; n.f(p);
+    if(hit){ Snd.doom(); const n=pick(NEMESIS); p.threads--; p.hubris=3; p.punished=true; n.f(p);
       t=`<span class="bad">${esc(p.name)}受神罰:${n.n}。</span>${n.t}命運三女神剪斷一條命線${p.threads?"":",你成為陰魂"}。`; log(`${esc(p.name)}受神罰「${n.n}」。`); }
     else t=`${esc(p.name)}(傲慢 ${p.hubris})擲出 ${r}。這一次,眾神沒有看見。`;
     return `<div class="fate"><div class="die roll">${r}</div><p>${t}</p></div>`; });
@@ -169,7 +179,7 @@ function doTime(){
   sheet(`<span class="greek">ΧΡΟΝΟΣ · 時間</span><h2>又過了一輪</h2><p class="verdict">時間牌還餘 ${left} 張。${left<=4?`<span class="bad">死神就在這幾張之中。</span>`:""}</p><div class="row"><button class="btn gold" data-a="close">下一輪</button></div>`);
 }
 function endLife(death){
-  S.over=true;
+  S.over=true; Snd.doom();
   const rows=S.players.map(p=>{ const oath=false, dest=!p.threads||p.hubris>=7?"塔耳塔羅斯":(p.karma>=10&&!p.punished?"樂土":"常春花原");
     const line=dest==="樂土"?"這一世無過。":dest==="塔耳塔羅斯"?"下一世帶着懲罰開局。":"無賞無罰。";
     return `<div class="end" style="--pc:var(--p${p.i})"><b>${esc(p.name)}</b><span class="dest">${dest}</span><p>${p.mortal},死於第 ${Math.min(p.house,12)} 宮${p.house===TELOS?"之後的終宮":""}。業 ${p.karma} · 名聲 ${p.kleos} · 傲慢 ${p.hubris}。${line}</p></div>`; });
@@ -183,7 +193,8 @@ document.addEventListener("click",ev=>{
   const b=ev.target.closest("[data-a]"); if(!b) return; const a=b.dataset.a, p=S&&S.players[S.turn];
   if(a==="start"){ const seats=[...document.querySelectorAll(".seat")].map(s=>({name:s.querySelector("input").value.trim(),mortal:s.querySelector("select").value})); return newGame(seats); }
   if(a==="seats"){ return seatsUI(+b.dataset.n); }
-  if(a==="reset"){ S=null; try{ localStorage.removeItem("houses12"); }catch{} $("#sheet").hidden=true; return render(); }
+  if(a==="view"){ use3d=!use3d; return render(); }
+  if(a==="reset"){ Board3D.reset(); S=null; try{ localStorage.removeItem("houses12"); }catch{} $("#sheet").hidden=true; return render(); }
   if(a==="omen") return doOmen();
   if(a==="trial") return trialUI();
   if(a==="rest"){ if(p.threads&&p.house<TELOS){ draw(p,2); log(`${esc(p.name)}休整,多抽 2 張。`); } else log(`${esc(p.name)}略過。`); return nextTurn(); }
