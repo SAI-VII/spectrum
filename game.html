@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>十二宮 · 輪迴迷宮</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="theme-color" content="#130F1A">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500&family=GFS+Didot&family=Noto+Serif+TC:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="src/game/game.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="mast">
+    <h1><small class="greek">Γνῶθι σεαυτόν</small>十二宮 · 輪迴迷宮</h1>
+    <div class="clock" id="clock" hidden></div>
+  </header>
+  <div class="meander" style="margin-bottom:20px"></div>
+
+  <main id="setup">
+    <p class="lede">一條路,螺旋向內,十二宮各有一位神在等。你付得起,就順;付不起,可以逞強,也可以祈求,但祂沒有義務回應你。時間牌的最後四張之中藏着死神。</p>
+    <div>
+      <span class="greek">幾個凡人</span>
+      <div class="row" style="margin-top:8px">
+        <button class="btn sm" data-a="seats" data-n="2">2 人</button><button class="btn sm gold" data-a="seats" data-n="3">3 人</button>
+        <button class="btn sm" data-a="seats" data-n="4">4 人</button><button class="btn sm" data-a="seats" data-n="5">5 人</button>
+      </div>
+    </div>
+    <div class="seats" id="seats"></div>
+    <div class="row"><button class="btn gold" data-a="start">派命盤,開始第一世</button></div>
+    <p class="note">這一版由 app 隨機派命盤並代管四德牌。各宮的特殊玩法、缺陷牌、眷顧與來世之籤還未做。</p>
+  </main>
+
+  <main id="table" hidden>
+    <div class="board-wrap" id="boardbox"></div>
+    <div class="act">
+      <section class="phase" id="phase" aria-live="polite"></section>
+      <div class="souls" id="souls"></div>
+      <div class="log" id="log" aria-label="紀事"></div>
+      <div><button class="link" data-a="reset">放棄這一局,重新開始</button></div>
+    </div>
+  </main>
+</div>
+<div id="sheet" hidden></div>
+<script src="src/data/entities.js"></script>
+<script src="src/data/lore.js"></script>
+<script src="src/game/game.js"></script>
+</body>
+</html>
